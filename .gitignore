@@ -1,0 +1,24 @@
+# 대용량 데이터 (원본은 HDD, 파생물은 재생성 가능)
+data/
+work/
+
+# 파싱 env (재생성 가능)
+.venv-apollo/
+.venv/
+
+# python 캐시
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# codex 아티팩트
+.codex/
+.codex
+
+# 운영 문서 (AI 작업용 — git 제외, 로컬 보존). git엔 코드 + 모듈 README만.
+/CHARTER.md
+/PIPELINE.md
+/common/FORMAT_SPEC.md
+/docs/
+/agent/

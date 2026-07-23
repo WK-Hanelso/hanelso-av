@@ -1,0 +1,40 @@
+# common/ — 도메인 관통 공유 모듈
+
+hanelso_swm의 모든 도메인(localization·perception·labeling·planning·simulation)이 공유하는 파싱 프레임워크와 데이터 포맷 정의를 담는다.
+
+> **모듈 명세 규약**: 이 README는 `common/`의 **내용 명세**다 (코드 모듈 디렉토리당 README 1개). 설계 근거·운영 문서(FORMAT_SPEC·DESIGN·EXEC)는 별개 문서로 링크만 한다.
+
+---
+
+## 구성
+
+| 경로 | 역할 |
+|---|---|
+| `FORMAT_SPEC.md` | 우리 통합 데이터 포맷 명세 (nuScenes 코어 + VLM 언어 레이어). **운영 문서** — 포맷 SoT. |
+| `io/` | **pluggable 파싱 프레임워크** — 이종 원본을 우리 포맷으로 변환. 아래 참조. |
+
+## `io/` — pluggable 파싱 프레임워크
+
+원본 종류가 늘어도 드라이버를 안 고치도록 **ABC + registry**로 구현을 갈아끼운다 ([[project_swm_architecture]], 추상화 ≤1-depth).
+
+| 파일 | 내용 |
+|---|---|
+| `io/base.py` | 추상 계약 2개. `SourceParser.parse(record_path, out_dir, clip_id, pose_provider) -> manifest`, `EgoPoseProvider.prepare()/pose_at(ts)`. **중간 추상 계층 없음(1-depth).** |
+| `io/registry.py` | 문자열 키 → 클래스. `register_parser/get_parser`, `register_pose/get_pose_provider`. 드라이버는 이걸로만 구현 획득(concrete 직접 import 금지). |
+| `io/schema.py` | 우리 포맷 테이블(nuScenes-style) dataclass + `write_tables(out_dir, tables)` JSON writer. 지오메트리는 python list 직렬화. |
+| `io/apollo/record_parser.py` | `ApolloRecordParser(SourceParser)` — Apollo cyber record → sample/ego_pose/obstacles→annotation/ego_dynamics. import 시 registry에 `"apollo_record"` 등록. |
+| `io/pose/identity.py` | `IdentityPoseProvider` — pose 부재 시 원점. 키 `"identity"`. |
+| `io/pose/apollo_pose.py` | `ApolloRecordPoseProvider` — record `/apollo/localization/pose`(UTM+heading→quat). 키 `"apollo_record"`. |
+
+## 확장 방법
+
+- **새 소스 파서**: `SourceParser` 상속 → 파일 하단 `register_parser("<key>", Cls)`. 드라이버 무변경.
+- **새 pose provider**: `EgoPoseProvider` 상속 → `register_pose("<key>", Cls)`. `--pose <key>`로 선택.
+- 예: E100 sensor raw(이미지+LiDAR) → `E100SensorParser`, LiDAR odometry → `LidarOdomPoseProvider`.
+
+## 관련 문서 (운영)
+
+- 포맷 정의: [FORMAT_SPEC.md](FORMAT_SPEC.md)
+- 파서 v1 설계: [../docs/DESIGN_parser_v1.md](../docs/DESIGN_parser_v1.md)
+- 실행 로그: [../agent/C-SWM-001_EXEC.md](../agent/C-SWM-001_EXEC.md)
+- 드라이버: [../parse_clip.py](../parse_clip.py)
