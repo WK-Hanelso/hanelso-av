@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hanelso-swm"
+version = "0.1.0"
+description = "hanelso_swm 공용 base — 원본→통합 포맷 파싱(common/io) + 도메인 공유 유틸. 모든 도메인이 import하는 코드 base."
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "protobuf",
+    "cyber_record",
+]
+
+# 모노레포: 공용 base 패키지 common(+ 향후 도메인 패키지)만 배포 대상.
+# 원본/파생/설정은 패키지 아님.
+[tool.setuptools.packages.find]
+include = ["common*"]
+namespaces = true
