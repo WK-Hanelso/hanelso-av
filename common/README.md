@@ -20,6 +20,7 @@ hanelso_swm의 모든 도메인(localization·perception·labeling·planning·si
 | 파일 | 내용 |
 |---|---|
 | `io/base.py` | 추상 계약 2개. `SourceParser.parse(record_path, out_dir, clip_id, pose_provider) -> manifest`, `EgoPoseProvider.prepare()/pose_at(ts)`. **중간 추상 계층 없음(1-depth).** |
+| `io/config.py` | `ParseConfig` dataclass. 실행 단위 입력(record/source/pose/clip_id/out_root)만 담는 얇은 Python config 계약. |
 | `io/registry.py` | 문자열 키 → 클래스. `register_parser/get_parser`, `register_pose/get_pose_provider`. 드라이버는 이걸로만 구현 획득(concrete 직접 import 금지). |
 | `io/schema.py` | 우리 포맷 테이블(nuScenes-style) dataclass + `write_tables(out_dir, tables)` JSON writer. 지오메트리는 python list 직렬화. |
 | `io/apollo/record_parser.py` | `ApolloRecordParser(SourceParser)` — Apollo cyber record → sample/ego_pose/obstacles→annotation/ego_dynamics. import 시 registry에 `"apollo_record"` 등록. |
@@ -29,7 +30,7 @@ hanelso_swm의 모든 도메인(localization·perception·labeling·planning·si
 ## 확장 방법
 
 - **새 소스 파서**: `SourceParser` 상속 → 파일 하단 `register_parser("<key>", Cls)`. 드라이버 무변경.
-- **새 pose provider**: `EgoPoseProvider` 상속 → `register_pose("<key>", Cls)`. `--pose <key>`로 선택.
+- **새 pose provider**: `EgoPoseProvider` 상속 → `register_pose("<key>", Cls)`. config의 `pose="<key>"`로 선택.
 - 예: E100 sensor raw(이미지+LiDAR) → `E100SensorParser`, LiDAR odometry → `LidarOdomPoseProvider`.
 
 ## 관련 문서 (운영)
