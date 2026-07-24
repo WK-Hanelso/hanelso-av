@@ -19,11 +19,11 @@ hanelso_swm의 모든 도메인(localization·perception·labeling·planning·si
 
 | 파일 | 내용 |
 |---|---|
-| `io/base.py` | 추상 계약 2개. `SourceParser.parse(record_path, out_dir, clip_id, pose_provider) -> manifest`, `EgoPoseProvider.prepare()/pose_at(ts)`. **중간 추상 계층 없음(1-depth).** |
-| `io/config.py` | `ParseConfig` dataclass. 실행 단위 입력(record/source/pose/clip_id/out_root)만 담는 얇은 Python config 계약. |
+| `io/base.py` | 추상 계약 2개. `SourceParser.parse(record_path, out_dir, clip_id, pose_provider, config) -> manifest`, `EgoPoseProvider.prepare()/pose_at(ts)`. **중간 추상 계층 없음(1-depth).** |
+| `io/config.py` | `ParseConfig` dataclass. 실행 단위 입력(record/source/pose/clip_id/out_root)과 keyframe 정책(`keyframe`, `keyframe_hz`)만 담는 얇은 Python config 계약. |
 | `io/registry.py` | 문자열 키 → 클래스. `register_parser/get_parser`, `register_pose/get_pose_provider`. 드라이버는 이걸로만 구현 획득(concrete 직접 import 금지). |
 | `io/schema.py` | 우리 포맷 테이블(nuScenes-style) dataclass + `write_tables(out_dir, tables)` JSON writer. 지오메트리는 python list 직렬화. |
-| `io/apollo/record_parser.py` | `ApolloRecordParser(SourceParser)` — Apollo cyber record → sample/ego_pose/obstacles→annotation/ego_dynamics. import 시 registry에 `"apollo_record"` 등록. |
+| `io/apollo/record_parser.py` | `ApolloRecordParser(SourceParser)` — Apollo cyber record를 1-pass로 읽어 pose keyframe(기본 10Hz), ego_pose, ego_dynamics, optional obstacles→annotation/instance를 생성. import 시 registry에 `"apollo_record"` 등록. |
 | `io/pose/identity.py` | `IdentityPoseProvider` — pose 부재 시 원점. 키 `"identity"`. |
 | `io/pose/apollo_pose.py` | `ApolloRecordPoseProvider` — record `/apollo/localization/pose`(UTM+heading→quat). 키 `"apollo_record"`. |
 

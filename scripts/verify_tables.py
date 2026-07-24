@@ -24,7 +24,6 @@ def main() -> int:
 
     assert samples, "sample.json is empty"
     assert ego_poses, "ego_pose.json is empty"
-    assert annotations, "sample_annotation.json is empty"
     assert len(samples) == len(ego_poses), "sample and ego_pose counts must match"
     assert len(samples) == len(ego_dynamics), "sample and ego_dynamics counts must match"
     assert len(scenes) == 1, "v1 expects exactly one scene"

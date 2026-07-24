@@ -48,6 +48,8 @@ class EgoDynamicsRow:
     timestamp: int
     speed_mps: float
     steering_percentage: float
+    linear_acceleration: List[float]
+    angular_velocity: List[float]
 
 
 @dataclass

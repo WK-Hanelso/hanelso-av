@@ -7,6 +7,7 @@ from typing import Dict, List, Tuple
 from cyber_record.record import Record
 
 from common.io.base import EgoPoseProvider, SourceParser
+from common.io.config import ParseConfig
 from common.io.registry import register_parser
 from common.io.schema import (
     CategoryRow,
@@ -20,7 +21,9 @@ from common.io.schema import (
     write_tables,
 )
 
+POSE_TOPIC = "/apollo/localization/pose"
 CHASSIS_TOPIC = "/apollo/canbus/chassis"
+IMU_TOPIC = "/apollo/sensor/gnss/imu"
 OBSTACLES_TOPIC = "/apollo/perception/obstacles"
 
 APOLLO_CATEGORY_MAP = {
@@ -74,6 +77,23 @@ def _extract_obstacle(obstacle) -> Dict[str, object]:
     }
 
 
+def _downsample_pose_timestamps(timestamps: List[int], keyframe_hz: float) -> List[int]:
+    if keyframe_hz <= 0.0:
+        raise ValueError(f"keyframe_hz must be > 0, got {keyframe_hz}")
+    if not timestamps:
+        return []
+    interval_ns = int(round(1_000_000_000.0 / keyframe_hz))
+    selected = [timestamps[0]]
+    next_target = timestamps[0] + interval_ns
+    while True:
+        next_index = bisect_left(timestamps, next_target)
+        if next_index >= len(timestamps):
+            break
+        selected.append(timestamps[next_index])
+        next_target = timestamps[next_index] + interval_ns
+    return selected
+
+
 def _derive_vehicle_and_date(record_path: str) -> Tuple[str, str]:
     path = Path(record_path)
     vehicle = path.parent.name
@@ -92,19 +112,38 @@ class ApolloRecordParser(SourceParser):
         out_dir: str,
         clip_id: str,
         pose_provider: EgoPoseProvider,
+        config: ParseConfig,
     ) -> Dict[str, object]:
-        pose_provider.prepare(record_path)
-
+        pose_timestamps: List[int] = []
         chassis_rows: List[Tuple[int, float, float]] = []
+        imu_rows: List[Tuple[int, List[float], List[float]]] = []
         obstacle_frames: List[Tuple[int, List[Dict[str, object]]]] = []
 
         for topic, msg, timestamp_ns in Record(record_path).read_messages():
-            if topic == CHASSIS_TOPIC:
+            if topic == POSE_TOPIC:
+                pose_timestamps.append(int(timestamp_ns))
+            elif topic == CHASSIS_TOPIC:
                 chassis_rows.append(
                     (
                         int(timestamp_ns),
                         float(msg.speed_mps),
                         float(msg.steering_percentage),
+                    )
+                )
+            elif topic == IMU_TOPIC:
+                imu_rows.append(
+                    (
+                        int(timestamp_ns),
+                        [
+                            float(msg.linear_acceleration.x),
+                            float(msg.linear_acceleration.y),
+                            float(msg.linear_acceleration.z),
+                        ],
+                        [
+                            float(msg.angular_velocity.x),
+                            float(msg.angular_velocity.y),
+                            float(msg.angular_velocity.z),
+                        ],
                     )
                 )
             elif topic == OBSTACLES_TOPIC:
@@ -115,10 +154,35 @@ class ApolloRecordParser(SourceParser):
                     )
                 )
 
-        if not obstacle_frames:
-            raise ValueError("No obstacle frames found; cannot build keyframe timeline.")
+        missing_topics: List[str] = []
+        if not pose_timestamps:
+            missing_topics.append(POSE_TOPIC)
+        if not chassis_rows:
+            missing_topics.append(CHASSIS_TOPIC)
+        if not imu_rows:
+            missing_topics.append(IMU_TOPIC)
+        if missing_topics:
+            raise ValueError(f"missing required topic(s): {', '.join(missing_topics)}")
+
+        if config.keyframe == "pose":
+            keyframe_timestamps = _downsample_pose_timestamps(pose_timestamps, config.keyframe_hz)
+        elif config.keyframe == "obstacles":
+            if not obstacle_frames:
+                raise ValueError(
+                    f"missing required topic(s): {OBSTACLES_TOPIC} (required when keyframe='obstacles')"
+                )
+            keyframe_timestamps = [timestamp_ns for timestamp_ns, _ in obstacle_frames]
+        else:
+            raise ValueError(
+                f"unsupported keyframe source: {config.keyframe!r} "
+                "(expected 'pose' or 'obstacles')"
+            )
+
+        pose_provider.prepare(record_path)
 
         chassis_timestamps = [row[0] for row in chassis_rows]
+        imu_timestamps = [row[0] for row in imu_rows]
+        obstacle_timestamps = [row[0] for row in obstacle_frames]
         category_tokens = {
             "pedestrian": _token(),
             "bicycle": _token(),
@@ -140,7 +204,7 @@ class ApolloRecordParser(SourceParser):
         instance_category_by_obstacle_id: Dict[int, str] = {}
         annotation_tokens_by_obstacle_id: Dict[int, List[str]] = defaultdict(list)
 
-        for frame_index, (timestamp_ns, obstacles) in enumerate(obstacle_frames):
+        for timestamp_ns in keyframe_timestamps:
             sample_token = _token()
             prev_token = samples[-1].token if samples else ""
             sample = SampleRow(
@@ -165,11 +229,10 @@ class ApolloRecordParser(SourceParser):
                 )
             )
 
-            speed_mps = 0.0
-            steering_percentage = 0.0
-            if chassis_timestamps:
-                chassis_index = _nearest_index(chassis_timestamps, timestamp_ns)
-                _, speed_mps, steering_percentage = chassis_rows[chassis_index]
+            chassis_index = _nearest_index(chassis_timestamps, timestamp_ns)
+            _, speed_mps, steering_percentage = chassis_rows[chassis_index]
+            imu_index = _nearest_index(imu_timestamps, timestamp_ns)
+            _, linear_acceleration, angular_velocity = imu_rows[imu_index]
             ego_dynamics.append(
                 EgoDynamicsRow(
                     token=_token(),
@@ -178,9 +241,15 @@ class ApolloRecordParser(SourceParser):
                     timestamp=timestamp_ns,
                     speed_mps=speed_mps,
                     steering_percentage=steering_percentage,
+                    linear_acceleration=list(linear_acceleration),
+                    angular_velocity=list(angular_velocity),
                 )
             )
 
+            obstacles: List[Dict[str, object]] = []
+            if obstacle_timestamps:
+                obstacle_index = _nearest_index(obstacle_timestamps, timestamp_ns)
+                _, obstacles = obstacle_frames[obstacle_index]
             for obstacle in obstacles:
                 obstacle_id = int(obstacle["id"])
                 category_name = APOLLO_CATEGORY_MAP.get(int(obstacle["type"]), "unknown")
