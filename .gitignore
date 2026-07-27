@@ -19,6 +19,8 @@ __pycache__/
 # 운영 문서 (AI 작업용 — git 제외, 로컬 보존). git엔 코드 + 모듈 README만.
 /CHARTER.md
 /PIPELINE.md
+/OVERVIEW.md
+/MAP_PROTO_CUSTOM_EXTENSIONS.md
 /common/FORMAT_SPEC.md
 /docs/
 /agent/
