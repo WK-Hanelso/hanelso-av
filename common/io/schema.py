@@ -84,6 +84,52 @@ class SampleAnnotationRow:
     num_radar_pts: int
 
 
+@dataclass
+class MapLane:
+    id: str
+    central: List[List[float]]
+    left: List[List[float]]
+    right: List[List[float]]
+    length: float
+    speed_limit: float
+    turn: str
+    subturn: str
+    roadtype: str
+    predecessor_ids: List[str]
+    successor_ids: List[str]
+    left_neighbor_ids: List[str]
+    right_neighbor_ids: List[str]
+    junction_id: str
+    road_id: str
+    section_id: str
+
+
+@dataclass
+class MapRoadBlock:
+    road_id: str
+    section_id: str
+    lane_ids: List[str]
+    junction_id: str
+
+
+@dataclass
+class MapSignal:
+    stop_line: List[List[float]]
+    overlap_lane_ids: List[str]
+    subsignal_types: List[str]
+
+
+@dataclass
+class MapGraph:
+    proj: str
+    lanes: List[MapLane]
+    roadblocks: Dict[str, MapRoadBlock]
+    lane_to_roadblock: Dict[str, str]
+    crosswalks: Dict[str, List[List[float]]]
+    signals: Dict[str, MapSignal]
+    custom_zones: Dict[str, List[List[List[float]]]]
+
+
 SerializableValue = Union[Dict[str, Any], List[Any]]
 
 
@@ -104,3 +150,10 @@ def write_tables(out_dir: str, tables: Dict[str, SerializableValue]) -> None:
         file_path = path / f"{table_name}.json"
         with file_path.open("w", encoding="utf-8") as handle:
             json.dump(_serialize_value(rows), handle, ensure_ascii=True, indent=2)
+
+
+def write_json(path: str, payload: Any) -> None:
+    file_path = Path(path)
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    with file_path.open("w", encoding="utf-8") as handle:
+        json.dump(_serialize_value(payload), handle, ensure_ascii=True, indent=2)

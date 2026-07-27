@@ -25,3 +25,9 @@ class EgoPoseProvider(ABC):
     @abstractmethod
     def pose_at(self, timestamp_ns: int) -> Dict[str, object]:
         """Return a pose dict with translation and quaternion rotation."""
+
+
+class MapParser(ABC):
+    @abstractmethod
+    def parse(self, map_path: str, out_dir: str, map_name: str) -> Dict[str, object]:
+        """Parse one source map into the unified map graph format."""
