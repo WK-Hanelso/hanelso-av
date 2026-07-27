@@ -17,6 +17,8 @@ dependencies = [
 # 빌드 전용 도구. Apollo map .proto → *_pb2.py 생성(protoc)에만 필요.
 # 런타임 불요(생성물은 커밋). docker base는 런타임엔 이거 제외 가능.
 dev = ["grpcio-tools==1.43.0"]
+# 시각화 도구(tools/parser_validation BEV 등).
+viz = ["matplotlib"]
 
 # 모노레포: 공용 base 패키지 common(+ 향후 도메인 패키지)만 배포 대상.
 # 원본/파생/설정은 패키지 아님.
