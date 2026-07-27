@@ -1,7 +1,11 @@
 syntax = "proto2";
+
 package apollo.hdmap;
+
 import "modules/map/proto/map_id.proto";
 import "modules/map/proto/map_geometry.proto";
+
+// alleyway
 
 message Alleyway {
   optional Id id = 1;

@@ -22,7 +22,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   syntax='proto2',
   serialized_options=None,
   create_key=_descriptor._internal_create_key,
-  serialized_pb=b'\n\"modules/map/proto/map_signal.proto\x12\x0c\x61pollo.hdmap\x1a#modules/common/proto/geometry.proto\x1a$modules/map/proto/map_geometry.proto\x1a\x1emodules/map/proto/map_id.proto\"\xa1\x02\n\tSubsignal\x12\x1c\n\x02id\x18\x01 \x01(\x0b\x32\x10.apollo.hdmap.Id\x12*\n\x04type\x18\x02 \x01(\x0e\x32\x1c.apollo.hdmap.Subsignal.Type\x12)\n\x08location\x18\x03 \x01(\x0b\x32\x17.apollo.common.PointENU\"\x9e\x01\n\x04Type\x12\x0b\n\x07UNKNOWN\x10\x01\x12\n\n\x06\x43IRCLE\x10\x02\x12\x0e\n\nARROW_LEFT\x10\x03\x12\x11\n\rARROW_FORWARD\x10\x04\x12\x0f\n\x0b\x41RROW_RIGHT\x10\x05\x12\x1a\n\x16\x41RROW_LEFT_AND_FORWARD\x10\x06\x12\x1b\n\x17\x41RROW_RIGHT_AND_FORWARD\x10\x07\x12\x10\n\x0c\x41RROW_U_TURN\x10\x08\"a\n\x08SignInfo\x12)\n\x04type\x18\x01 \x01(\x0e\x32\x1b.apollo.hdmap.SignInfo.Type\"*\n\x04Type\x12\x08\n\x04None\x10\x00\x12\x18\n\x14NO_RIGHT_TURN_ON_RED\x10\x01\"\x92\x03\n\x06Signal\x12\x1c\n\x02id\x18\x01 \x01(\x0b\x32\x10.apollo.hdmap.Id\x12\'\n\x08\x62oundary\x18\x02 \x01(\x0b\x32\x15.apollo.hdmap.Polygon\x12*\n\tsubsignal\x18\x03 \x03(\x0b\x32\x17.apollo.hdmap.Subsignal\x12$\n\noverlap_id\x18\x04 \x03(\x0b\x32\x10.apollo.hdmap.Id\x12\'\n\x04type\x18\x05 \x01(\x0e\x32\x19.apollo.hdmap.Signal.Type\x12&\n\tstop_line\x18\x06 \x03(\x0b\x32\x13.apollo.hdmap.Curve\x12)\n\tsign_info\x18\x07 \x03(\x0b\x32\x16.apollo.hdmap.SignInfo\"s\n\x04Type\x12\x0b\n\x07UNKNOWN\x10\x01\x12\x14\n\x10MIX_2_HORIZONTAL\x10\x02\x12\x12\n\x0eMIX_2_VERTICAL\x10\x03\x12\x14\n\x10MIX_3_HORIZONTAL\x10\x04\x12\x12\n\x0eMIX_3_VERTICAL\x10\x05\x12\n\n\x06SINGLE\x10\x06'
+  serialized_pb=b'\n\"modules/map/proto/map_signal.proto\x12\x0c\x61pollo.hdmap\x1a#modules/common/proto/geometry.proto\x1a$modules/map/proto/map_geometry.proto\x1a\x1emodules/map/proto/map_id.proto\"\xc0\x02\n\tSubsignal\x12\x1c\n\x02id\x18\x01 \x01(\x0b\x32\x10.apollo.hdmap.Id\x12*\n\x04type\x18\x02 \x01(\x0e\x32\x1c.apollo.hdmap.Subsignal.Type\x12)\n\x08location\x18\x03 \x01(\x0b\x32\x17.apollo.common.PointENU\"\xbd\x01\n\x04Type\x12\x0b\n\x07UNKNOWN\x10\x01\x12\n\n\x06\x43IRCLE\x10\x02\x12\x0e\n\nARROW_LEFT\x10\x03\x12\x11\n\rARROW_FORWARD\x10\x04\x12\x0f\n\x0b\x41RROW_RIGHT\x10\x05\x12\x1a\n\x16\x41RROW_LEFT_AND_FORWARD\x10\x06\x12\x1b\n\x17\x41RROW_RIGHT_AND_FORWARD\x10\x07\x12\x10\n\x0c\x41RROW_U_TURN\x10\x08\x12\x07\n\x03\x42US\x10\t\x12\x07\n\x03PED\x10\n\x12\x0b\n\x07\x42ICYCLE\x10\x0b\"|\n\x08SignInfo\x12)\n\x04type\x18\x01 \x01(\x0e\x32\x1b.apollo.hdmap.SignInfo.Type\"E\n\x04Type\x12\x08\n\x04NONE\x10\x00\x12\x18\n\x14NO_RIGHT_TURN_ON_RED\x10\x01\x12\x19\n\x15UNPROTECTED_LEFT_TURN\x10\x02\"\xce\x03\n\x06Signal\x12\x1c\n\x02id\x18\x01 \x01(\x0b\x32\x10.apollo.hdmap.Id\x12\'\n\x08\x62oundary\x18\x02 \x01(\x0b\x32\x15.apollo.hdmap.Polygon\x12*\n\tsubsignal\x18\x03 \x03(\x0b\x32\x17.apollo.hdmap.Subsignal\x12$\n\noverlap_id\x18\x04 \x03(\x0b\x32\x10.apollo.hdmap.Id\x12\'\n\x04type\x18\x05 \x01(\x0e\x32\x19.apollo.hdmap.Signal.Type\x12&\n\tstop_line\x18\x06 \x03(\x0b\x32\x13.apollo.hdmap.Curve\x12)\n\tsign_info\x18\x07 \x03(\x0b\x32\x16.apollo.hdmap.SignInfo\x12\x0f\n\x07heading\x18\x08 \x01(\x01\"\x9d\x01\n\x04Type\x12\x0b\n\x07UNKNOWN\x10\x01\x12\x14\n\x10MIX_2_HORIZONTAL\x10\x02\x12\x12\n\x0eMIX_2_VERTICAL\x10\x03\x12\x14\n\x10MIX_3_HORIZONTAL\x10\x04\x12\x12\n\x0eMIX_3_VERTICAL\x10\x05\x12\x14\n\x10MIX_4_HORIZONTAL\x10\x06\x12\x12\n\x0eMIX_4_VERTICAL\x10\x07\x12\n\n\x06SINGLE\x10\x08'
   ,
   dependencies=[modules_dot_common_dot_proto_dot_geometry__pb2.DESCRIPTOR,modules_dot_map_dot_proto_dot_map__geometry__pb2.DESCRIPTOR,modules_dot_map_dot_proto_dot_map__id__pb2.DESCRIPTOR,])
 
@@ -75,11 +75,26 @@ _SUBSIGNAL_TYPE = _descriptor.EnumDescriptor(
       serialized_options=None,
       type=None,
       create_key=_descriptor._internal_create_key),
+    _descriptor.EnumValueDescriptor(
+      name='BUS', index=8, number=9,
+      serialized_options=None,
+      type=None,
+      create_key=_descriptor._internal_create_key),
+    _descriptor.EnumValueDescriptor(
+      name='PED', index=9, number=10,
+      serialized_options=None,
+      type=None,
+      create_key=_descriptor._internal_create_key),
+    _descriptor.EnumValueDescriptor(
+      name='BICYCLE', index=10, number=11,
+      serialized_options=None,
+      type=None,
+      create_key=_descriptor._internal_create_key),
   ],
   containing_type=None,
   serialized_options=None,
   serialized_start=291,
-  serialized_end=449,
+  serialized_end=480,
 )
 _sym_db.RegisterEnumDescriptor(_SUBSIGNAL_TYPE)
 
@@ -91,7 +106,7 @@ _SIGNINFO_TYPE = _descriptor.EnumDescriptor(
   create_key=_descriptor._internal_create_key,
   values=[
     _descriptor.EnumValueDescriptor(
-      name='None', index=0, number=0,
+      name='NONE', index=0, number=0,
       serialized_options=None,
       type=None,
       create_key=_descriptor._internal_create_key),
@@ -100,11 +115,16 @@ _SIGNINFO_TYPE = _descriptor.EnumDescriptor(
       serialized_options=None,
       type=None,
       create_key=_descriptor._internal_create_key),
+    _descriptor.EnumValueDescriptor(
+      name='UNPROTECTED_LEFT_TURN', index=2, number=2,
+      serialized_options=None,
+      type=None,
+      create_key=_descriptor._internal_create_key),
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=506,
-  serialized_end=548,
+  serialized_start=537,
+  serialized_end=606,
 )
 _sym_db.RegisterEnumDescriptor(_SIGNINFO_TYPE)
 
@@ -141,15 +161,25 @@ _SIGNAL_TYPE = _descriptor.EnumDescriptor(
       type=None,
       create_key=_descriptor._internal_create_key),
     _descriptor.EnumValueDescriptor(
-      name='SINGLE', index=5, number=6,
+      name='MIX_4_HORIZONTAL', index=5, number=6,
+      serialized_options=None,
+      type=None,
+      create_key=_descriptor._internal_create_key),
+    _descriptor.EnumValueDescriptor(
+      name='MIX_4_VERTICAL', index=6, number=7,
+      serialized_options=None,
+      type=None,
+      create_key=_descriptor._internal_create_key),
+    _descriptor.EnumValueDescriptor(
+      name='SINGLE', index=7, number=8,
       serialized_options=None,
       type=None,
       create_key=_descriptor._internal_create_key),
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=838,
-  serialized_end=953,
+  serialized_start=914,
+  serialized_end=1071,
 )
 _sym_db.RegisterEnumDescriptor(_SIGNAL_TYPE)
 
@@ -197,7 +227,7 @@ _SUBSIGNAL = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=160,
-  serialized_end=449,
+  serialized_end=480,
 )
 
 
@@ -229,8 +259,8 @@ _SIGNINFO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=451,
-  serialized_end=548,
+  serialized_start=482,
+  serialized_end=606,
 )
 
 
@@ -291,6 +321,13 @@ _SIGNAL = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='heading', full_name='apollo.hdmap.Signal.heading', index=7,
+      number=8, type=1, cpp_type=5, label=1,
+      has_default_value=False, default_value=float(0),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
   ],
   extensions=[
   ],
@@ -304,8 +341,8 @@ _SIGNAL = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=551,
-  serialized_end=953,
+  serialized_start=609,
+  serialized_end=1071,
 )
 
 _SUBSIGNAL.fields_by_name['id'].message_type = modules_dot_map_dot_proto_dot_map__id__pb2._ID

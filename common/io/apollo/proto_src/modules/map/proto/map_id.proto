@@ -4,5 +4,5 @@ package apollo.hdmap;
 
 // Global unique ids for all objects (include lanes, junctions, overlaps, etc).
 message Id {
-  optional bytes id = 1;
+  optional bytes id = 1;  // deviation: non-UTF8 id → bytes
 }

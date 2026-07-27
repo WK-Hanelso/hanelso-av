@@ -21,7 +21,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   syntax='proto2',
   serialized_options=None,
   create_key=_descriptor._internal_create_key,
-  serialized_pb=b'\n#modules/map/proto/map_overlap.proto\x12\x0c\x61pollo.hdmap\x1a\x1emodules/map/proto/map_id.proto\x1a$modules/map/proto/map_geometry.proto\"p\n\x0fLaneOverlapInfo\x12\x0f\n\x07start_s\x18\x01 \x01(\x01\x12\r\n\x05\x65nd_s\x18\x02 \x01(\x01\x12\x10\n\x08is_merge\x18\x03 \x01(\x08\x12+\n\x11region_overlap_id\x18\x04 \x01(\x0b\x32\x10.apollo.hdmap.Id\"\x13\n\x11SignalOverlapInfo\"\x15\n\x13StopSignOverlapInfo\"C\n\x14\x43rosswalkOverlapInfo\x12+\n\x11region_overlap_id\x18\x01 \x01(\x0b\x32\x10.apollo.hdmap.Id\"\x15\n\x13JunctionOverlapInfo\"\x12\n\x10YieldOverlapInfo\"\x16\n\x14\x43learAreaOverlapInfo\"\x16\n\x14SpeedBumpOverlapInfo\"\x19\n\x17ParkingSpaceOverlapInfo\"\x18\n\x16PNCJunctionOverlapInfo\"\x10\n\x0eRSUOverlapInfo\"Y\n\x11RegionOverlapInfo\x12\x1c\n\x02id\x18\x01 \x01(\x0b\x32\x10.apollo.hdmap.Id\x12&\n\x07polygon\x18\x02 \x03(\x0b\x32\x15.apollo.hdmap.Polygon\"\xaf\x06\n\x11ObjectOverlapInfo\x12\x1c\n\x02id\x18\x01 \x01(\x0b\x32\x10.apollo.hdmap.Id\x12:\n\x11lane_overlap_info\x18\x03 \x01(\x0b\x32\x1d.apollo.hdmap.LaneOverlapInfoH\x00\x12>\n\x13signal_overlap_info\x18\x04 \x01(\x0b\x32\x1f.apollo.hdmap.SignalOverlapInfoH\x00\x12\x43\n\x16stop_sign_overlap_info\x18\x05 \x01(\x0b\x32!.apollo.hdmap.StopSignOverlapInfoH\x00\x12\x44\n\x16\x63rosswalk_overlap_info\x18\x06 \x01(\x0b\x32\".apollo.hdmap.CrosswalkOverlapInfoH\x00\x12\x42\n\x15junction_overlap_info\x18\x07 \x01(\x0b\x32!.apollo.hdmap.JunctionOverlapInfoH\x00\x12\x41\n\x17yield_sign_overlap_info\x18\x08 \x01(\x0b\x32\x1e.apollo.hdmap.YieldOverlapInfoH\x00\x12\x45\n\x17\x63lear_area_overlap_info\x18\t \x01(\x0b\x32\".apollo.hdmap.ClearAreaOverlapInfoH\x00\x12\x45\n\x17speed_bump_overlap_info\x18\n \x01(\x0b\x32\".apollo.hdmap.SpeedBumpOverlapInfoH\x00\x12K\n\x1aparking_space_overlap_info\x18\x0b \x01(\x0b\x32%.apollo.hdmap.ParkingSpaceOverlapInfoH\x00\x12I\n\x19pnc_junction_overlap_info\x18\x0c \x01(\x0b\x32$.apollo.hdmap.PNCJunctionOverlapInfoH\x00\x12\x38\n\x10rsu_overlap_info\x18\r \x01(\x0b\x32\x1c.apollo.hdmap.RSUOverlapInfoH\x00\x42\x0e\n\x0coverlap_info\"\x91\x01\n\x07Overlap\x12\x1c\n\x02id\x18\x01 \x01(\x0b\x32\x10.apollo.hdmap.Id\x12/\n\x06object\x18\x02 \x03(\x0b\x32\x1f.apollo.hdmap.ObjectOverlapInfo\x12\x37\n\x0eregion_overlap\x18\x03 \x03(\x0b\x32\x1f.apollo.hdmap.RegionOverlapInfo'
+  serialized_pb=b'\n#modules/map/proto/map_overlap.proto\x12\x0c\x61pollo.hdmap\x1a\x1emodules/map/proto/map_id.proto\x1a$modules/map/proto/map_geometry.proto\"p\n\x0fLaneOverlapInfo\x12\x0f\n\x07start_s\x18\x01 \x01(\x01\x12\r\n\x05\x65nd_s\x18\x02 \x01(\x01\x12\x10\n\x08is_merge\x18\x03 \x01(\x08\x12+\n\x11region_overlap_id\x18\x04 \x01(\x0b\x32\x10.apollo.hdmap.Id\"\x13\n\x11SignalOverlapInfo\"\x15\n\x13StopSignOverlapInfo\"C\n\x14\x43rosswalkOverlapInfo\x12+\n\x11region_overlap_id\x18\x01 \x01(\x0b\x32\x10.apollo.hdmap.Id\"\x15\n\x13JunctionOverlapInfo\"\x12\n\x10YieldOverlapInfo\"\x16\n\x14\x43learAreaOverlapInfo\"\x1e\n\x1cNoAutoDrivingZoneOverlapInfo\"\x1d\n\x1b\x43onstructionZoneOverlapInfo\"\x13\n\x11TunnelOverlapInfo\"\x16\n\x14UnderpassOverlapInfo\"\x15\n\x13\x41lleywayOverlapInfo\"\x16\n\x14SpeedBumpOverlapInfo\"\x19\n\x17ParkingSpaceOverlapInfo\"\x18\n\x16PNCJunctionOverlapInfo\"\x10\n\x0eRSUOverlapInfo\"Y\n\x11RegionOverlapInfo\x12\x1c\n\x02id\x18\x01 \x01(\x0b\x32\x10.apollo.hdmap.Id\x12&\n\x07polygon\x18\x02 \x03(\x0b\x32\x15.apollo.hdmap.Polygon\"\xa7\t\n\x11ObjectOverlapInfo\x12\x1c\n\x02id\x18\x01 \x01(\x0b\x32\x10.apollo.hdmap.Id\x12:\n\x11lane_overlap_info\x18\x03 \x01(\x0b\x32\x1d.apollo.hdmap.LaneOverlapInfoH\x00\x12>\n\x13signal_overlap_info\x18\x04 \x01(\x0b\x32\x1f.apollo.hdmap.SignalOverlapInfoH\x00\x12\x43\n\x16stop_sign_overlap_info\x18\x05 \x01(\x0b\x32!.apollo.hdmap.StopSignOverlapInfoH\x00\x12\x44\n\x16\x63rosswalk_overlap_info\x18\x06 \x01(\x0b\x32\".apollo.hdmap.CrosswalkOverlapInfoH\x00\x12\x42\n\x15junction_overlap_info\x18\x07 \x01(\x0b\x32!.apollo.hdmap.JunctionOverlapInfoH\x00\x12\x41\n\x17yield_sign_overlap_info\x18\x08 \x01(\x0b\x32\x1e.apollo.hdmap.YieldOverlapInfoH\x00\x12\x45\n\x17\x63lear_area_overlap_info\x18\t \x01(\x0b\x32\".apollo.hdmap.ClearAreaOverlapInfoH\x00\x12\x45\n\x17speed_bump_overlap_info\x18\n \x01(\x0b\x32\".apollo.hdmap.SpeedBumpOverlapInfoH\x00\x12K\n\x1aparking_space_overlap_info\x18\x0b \x01(\x0b\x32%.apollo.hdmap.ParkingSpaceOverlapInfoH\x00\x12I\n\x19pnc_junction_overlap_info\x18\x0c \x01(\x0b\x32$.apollo.hdmap.PNCJunctionOverlapInfoH\x00\x12\x38\n\x10rsu_overlap_info\x18\r \x01(\x0b\x32\x1c.apollo.hdmap.RSUOverlapInfoH\x00\x12W\n!no_auto_driving_zone_overlap_info\x18\x0e \x01(\x0b\x32*.apollo.hdmap.NoAutoDrivingZoneOverlapInfoH\x00\x12>\n\x13tunnel_overlap_info\x18\x0f \x01(\x0b\x32\x1f.apollo.hdmap.TunnelOverlapInfoH\x00\x12\x44\n\x16underpass_overlap_info\x18\x10 \x01(\x0b\x32\".apollo.hdmap.UnderpassOverlapInfoH\x00\x12S\n\x1e\x63onstruction_zone_overlap_info\x18\x11 \x01(\x0b\x32).apollo.hdmap.ConstructionZoneOverlapInfoH\x00\x12\x42\n\x15\x61lleyway_overlap_info\x18\x12 \x01(\x0b\x32!.apollo.hdmap.AlleywayOverlapInfoH\x00\x42\x0e\n\x0coverlap_info\"\x91\x01\n\x07Overlap\x12\x1c\n\x02id\x18\x01 \x01(\x0b\x32\x10.apollo.hdmap.Id\x12/\n\x06object\x18\x02 \x03(\x0b\x32\x1f.apollo.hdmap.ObjectOverlapInfo\x12\x37\n\x0eregion_overlap\x18\x03 \x03(\x0b\x32\x1f.apollo.hdmap.RegionOverlapInfo'
   ,
   dependencies=[modules_dot_map_dot_proto_dot_map__id__pb2.DESCRIPTOR,modules_dot_map_dot_proto_dot_map__geometry__pb2.DESCRIPTOR,])
 
@@ -238,6 +238,131 @@ _CLEARAREAOVERLAPINFO = _descriptor.Descriptor(
 )
 
 
+_NOAUTODRIVINGZONEOVERLAPINFO = _descriptor.Descriptor(
+  name='NoAutoDrivingZoneOverlapInfo',
+  full_name='apollo.hdmap.NoAutoDrivingZoneOverlapInfo',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto2',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=417,
+  serialized_end=447,
+)
+
+
+_CONSTRUCTIONZONEOVERLAPINFO = _descriptor.Descriptor(
+  name='ConstructionZoneOverlapInfo',
+  full_name='apollo.hdmap.ConstructionZoneOverlapInfo',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto2',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=449,
+  serialized_end=478,
+)
+
+
+_TUNNELOVERLAPINFO = _descriptor.Descriptor(
+  name='TunnelOverlapInfo',
+  full_name='apollo.hdmap.TunnelOverlapInfo',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto2',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=480,
+  serialized_end=499,
+)
+
+
+_UNDERPASSOVERLAPINFO = _descriptor.Descriptor(
+  name='UnderpassOverlapInfo',
+  full_name='apollo.hdmap.UnderpassOverlapInfo',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto2',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=501,
+  serialized_end=523,
+)
+
+
+_ALLEYWAYOVERLAPINFO = _descriptor.Descriptor(
+  name='AlleywayOverlapInfo',
+  full_name='apollo.hdmap.AlleywayOverlapInfo',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto2',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=525,
+  serialized_end=546,
+)
+
+
 _SPEEDBUMPOVERLAPINFO = _descriptor.Descriptor(
   name='SpeedBumpOverlapInfo',
   full_name='apollo.hdmap.SpeedBumpOverlapInfo',
@@ -258,8 +383,8 @@ _SPEEDBUMPOVERLAPINFO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=417,
-  serialized_end=439,
+  serialized_start=548,
+  serialized_end=570,
 )
 
 
@@ -283,8 +408,8 @@ _PARKINGSPACEOVERLAPINFO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=441,
-  serialized_end=466,
+  serialized_start=572,
+  serialized_end=597,
 )
 
 
@@ -308,8 +433,8 @@ _PNCJUNCTIONOVERLAPINFO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=468,
-  serialized_end=492,
+  serialized_start=599,
+  serialized_end=623,
 )
 
 
@@ -333,8 +458,8 @@ _RSUOVERLAPINFO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=494,
-  serialized_end=510,
+  serialized_start=625,
+  serialized_end=641,
 )
 
 
@@ -372,8 +497,8 @@ _REGIONOVERLAPINFO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=512,
-  serialized_end=601,
+  serialized_start=643,
+  serialized_end=732,
 )
 
 
@@ -469,6 +594,41 @@ _OBJECTOVERLAPINFO = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='no_auto_driving_zone_overlap_info', full_name='apollo.hdmap.ObjectOverlapInfo.no_auto_driving_zone_overlap_info', index=12,
+      number=14, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='tunnel_overlap_info', full_name='apollo.hdmap.ObjectOverlapInfo.tunnel_overlap_info', index=13,
+      number=15, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='underpass_overlap_info', full_name='apollo.hdmap.ObjectOverlapInfo.underpass_overlap_info', index=14,
+      number=16, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='construction_zone_overlap_info', full_name='apollo.hdmap.ObjectOverlapInfo.construction_zone_overlap_info', index=15,
+      number=17, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='alleyway_overlap_info', full_name='apollo.hdmap.ObjectOverlapInfo.alleyway_overlap_info', index=16,
+      number=18, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
   ],
   extensions=[
   ],
@@ -486,8 +646,8 @@ _OBJECTOVERLAPINFO = _descriptor.Descriptor(
       create_key=_descriptor._internal_create_key,
     fields=[]),
   ],
-  serialized_start=604,
-  serialized_end=1419,
+  serialized_start=735,
+  serialized_end=1926,
 )
 
 
@@ -532,8 +692,8 @@ _OVERLAP = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1422,
-  serialized_end=1567,
+  serialized_start=1929,
+  serialized_end=2074,
 )
 
 _LANEOVERLAPINFO.fields_by_name['region_overlap_id'].message_type = modules_dot_map_dot_proto_dot_map__id__pb2._ID
@@ -552,6 +712,11 @@ _OBJECTOVERLAPINFO.fields_by_name['speed_bump_overlap_info'].message_type = _SPE
 _OBJECTOVERLAPINFO.fields_by_name['parking_space_overlap_info'].message_type = _PARKINGSPACEOVERLAPINFO
 _OBJECTOVERLAPINFO.fields_by_name['pnc_junction_overlap_info'].message_type = _PNCJUNCTIONOVERLAPINFO
 _OBJECTOVERLAPINFO.fields_by_name['rsu_overlap_info'].message_type = _RSUOVERLAPINFO
+_OBJECTOVERLAPINFO.fields_by_name['no_auto_driving_zone_overlap_info'].message_type = _NOAUTODRIVINGZONEOVERLAPINFO
+_OBJECTOVERLAPINFO.fields_by_name['tunnel_overlap_info'].message_type = _TUNNELOVERLAPINFO
+_OBJECTOVERLAPINFO.fields_by_name['underpass_overlap_info'].message_type = _UNDERPASSOVERLAPINFO
+_OBJECTOVERLAPINFO.fields_by_name['construction_zone_overlap_info'].message_type = _CONSTRUCTIONZONEOVERLAPINFO
+_OBJECTOVERLAPINFO.fields_by_name['alleyway_overlap_info'].message_type = _ALLEYWAYOVERLAPINFO
 _OBJECTOVERLAPINFO.oneofs_by_name['overlap_info'].fields.append(
   _OBJECTOVERLAPINFO.fields_by_name['lane_overlap_info'])
 _OBJECTOVERLAPINFO.fields_by_name['lane_overlap_info'].containing_oneof = _OBJECTOVERLAPINFO.oneofs_by_name['overlap_info']
@@ -585,6 +750,21 @@ _OBJECTOVERLAPINFO.fields_by_name['pnc_junction_overlap_info'].containing_oneof 
 _OBJECTOVERLAPINFO.oneofs_by_name['overlap_info'].fields.append(
   _OBJECTOVERLAPINFO.fields_by_name['rsu_overlap_info'])
 _OBJECTOVERLAPINFO.fields_by_name['rsu_overlap_info'].containing_oneof = _OBJECTOVERLAPINFO.oneofs_by_name['overlap_info']
+_OBJECTOVERLAPINFO.oneofs_by_name['overlap_info'].fields.append(
+  _OBJECTOVERLAPINFO.fields_by_name['no_auto_driving_zone_overlap_info'])
+_OBJECTOVERLAPINFO.fields_by_name['no_auto_driving_zone_overlap_info'].containing_oneof = _OBJECTOVERLAPINFO.oneofs_by_name['overlap_info']
+_OBJECTOVERLAPINFO.oneofs_by_name['overlap_info'].fields.append(
+  _OBJECTOVERLAPINFO.fields_by_name['tunnel_overlap_info'])
+_OBJECTOVERLAPINFO.fields_by_name['tunnel_overlap_info'].containing_oneof = _OBJECTOVERLAPINFO.oneofs_by_name['overlap_info']
+_OBJECTOVERLAPINFO.oneofs_by_name['overlap_info'].fields.append(
+  _OBJECTOVERLAPINFO.fields_by_name['underpass_overlap_info'])
+_OBJECTOVERLAPINFO.fields_by_name['underpass_overlap_info'].containing_oneof = _OBJECTOVERLAPINFO.oneofs_by_name['overlap_info']
+_OBJECTOVERLAPINFO.oneofs_by_name['overlap_info'].fields.append(
+  _OBJECTOVERLAPINFO.fields_by_name['construction_zone_overlap_info'])
+_OBJECTOVERLAPINFO.fields_by_name['construction_zone_overlap_info'].containing_oneof = _OBJECTOVERLAPINFO.oneofs_by_name['overlap_info']
+_OBJECTOVERLAPINFO.oneofs_by_name['overlap_info'].fields.append(
+  _OBJECTOVERLAPINFO.fields_by_name['alleyway_overlap_info'])
+_OBJECTOVERLAPINFO.fields_by_name['alleyway_overlap_info'].containing_oneof = _OBJECTOVERLAPINFO.oneofs_by_name['overlap_info']
 _OVERLAP.fields_by_name['id'].message_type = modules_dot_map_dot_proto_dot_map__id__pb2._ID
 _OVERLAP.fields_by_name['object'].message_type = _OBJECTOVERLAPINFO
 _OVERLAP.fields_by_name['region_overlap'].message_type = _REGIONOVERLAPINFO
@@ -595,6 +775,11 @@ DESCRIPTOR.message_types_by_name['CrosswalkOverlapInfo'] = _CROSSWALKOVERLAPINFO
 DESCRIPTOR.message_types_by_name['JunctionOverlapInfo'] = _JUNCTIONOVERLAPINFO
 DESCRIPTOR.message_types_by_name['YieldOverlapInfo'] = _YIELDOVERLAPINFO
 DESCRIPTOR.message_types_by_name['ClearAreaOverlapInfo'] = _CLEARAREAOVERLAPINFO
+DESCRIPTOR.message_types_by_name['NoAutoDrivingZoneOverlapInfo'] = _NOAUTODRIVINGZONEOVERLAPINFO
+DESCRIPTOR.message_types_by_name['ConstructionZoneOverlapInfo'] = _CONSTRUCTIONZONEOVERLAPINFO
+DESCRIPTOR.message_types_by_name['TunnelOverlapInfo'] = _TUNNELOVERLAPINFO
+DESCRIPTOR.message_types_by_name['UnderpassOverlapInfo'] = _UNDERPASSOVERLAPINFO
+DESCRIPTOR.message_types_by_name['AlleywayOverlapInfo'] = _ALLEYWAYOVERLAPINFO
 DESCRIPTOR.message_types_by_name['SpeedBumpOverlapInfo'] = _SPEEDBUMPOVERLAPINFO
 DESCRIPTOR.message_types_by_name['ParkingSpaceOverlapInfo'] = _PARKINGSPACEOVERLAPINFO
 DESCRIPTOR.message_types_by_name['PNCJunctionOverlapInfo'] = _PNCJUNCTIONOVERLAPINFO
@@ -652,6 +837,41 @@ ClearAreaOverlapInfo = _reflection.GeneratedProtocolMessageType('ClearAreaOverla
   # @@protoc_insertion_point(class_scope:apollo.hdmap.ClearAreaOverlapInfo)
   })
 _sym_db.RegisterMessage(ClearAreaOverlapInfo)
+
+NoAutoDrivingZoneOverlapInfo = _reflection.GeneratedProtocolMessageType('NoAutoDrivingZoneOverlapInfo', (_message.Message,), {
+  'DESCRIPTOR' : _NOAUTODRIVINGZONEOVERLAPINFO,
+  '__module__' : 'modules.map.proto.map_overlap_pb2'
+  # @@protoc_insertion_point(class_scope:apollo.hdmap.NoAutoDrivingZoneOverlapInfo)
+  })
+_sym_db.RegisterMessage(NoAutoDrivingZoneOverlapInfo)
+
+ConstructionZoneOverlapInfo = _reflection.GeneratedProtocolMessageType('ConstructionZoneOverlapInfo', (_message.Message,), {
+  'DESCRIPTOR' : _CONSTRUCTIONZONEOVERLAPINFO,
+  '__module__' : 'modules.map.proto.map_overlap_pb2'
+  # @@protoc_insertion_point(class_scope:apollo.hdmap.ConstructionZoneOverlapInfo)
+  })
+_sym_db.RegisterMessage(ConstructionZoneOverlapInfo)
+
+TunnelOverlapInfo = _reflection.GeneratedProtocolMessageType('TunnelOverlapInfo', (_message.Message,), {
+  'DESCRIPTOR' : _TUNNELOVERLAPINFO,
+  '__module__' : 'modules.map.proto.map_overlap_pb2'
+  # @@protoc_insertion_point(class_scope:apollo.hdmap.TunnelOverlapInfo)
+  })
+_sym_db.RegisterMessage(TunnelOverlapInfo)
+
+UnderpassOverlapInfo = _reflection.GeneratedProtocolMessageType('UnderpassOverlapInfo', (_message.Message,), {
+  'DESCRIPTOR' : _UNDERPASSOVERLAPINFO,
+  '__module__' : 'modules.map.proto.map_overlap_pb2'
+  # @@protoc_insertion_point(class_scope:apollo.hdmap.UnderpassOverlapInfo)
+  })
+_sym_db.RegisterMessage(UnderpassOverlapInfo)
+
+AlleywayOverlapInfo = _reflection.GeneratedProtocolMessageType('AlleywayOverlapInfo', (_message.Message,), {
+  'DESCRIPTOR' : _ALLEYWAYOVERLAPINFO,
+  '__module__' : 'modules.map.proto.map_overlap_pb2'
+  # @@protoc_insertion_point(class_scope:apollo.hdmap.AlleywayOverlapInfo)
+  })
+_sym_db.RegisterMessage(AlleywayOverlapInfo)
 
 SpeedBumpOverlapInfo = _reflection.GeneratedProtocolMessageType('SpeedBumpOverlapInfo', (_message.Message,), {
   'DESCRIPTOR' : _SPEEDBUMPOVERLAPINFO,

@@ -28,4 +28,5 @@ message CurveSegment {
 // An object similar to a line but that need not be straight.
 message Curve {
   repeated CurveSegment segment = 1;
+  optional bool virtual = 2;
 }

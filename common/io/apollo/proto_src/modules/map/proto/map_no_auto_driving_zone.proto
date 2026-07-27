@@ -1,7 +1,11 @@
 syntax = "proto2";
+
 package apollo.hdmap;
+
 import "modules/map/proto/map_id.proto";
 import "modules/map/proto/map_geometry.proto";
+
+// A no auto driving zone means in an area which car can not driving autonomous
 
 message NoAutoDrivingZone {
   optional Id id = 1;

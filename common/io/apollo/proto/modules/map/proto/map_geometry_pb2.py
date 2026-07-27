@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   syntax='proto2',
   serialized_options=None,
   create_key=_descriptor._internal_create_key,
-  serialized_pb=b'\n$modules/map/proto/map_geometry.proto\x12\x0c\x61pollo.hdmap\x1a#modules/common/proto/geometry.proto\"1\n\x07Polygon\x12&\n\x05point\x18\x01 \x03(\x0b\x32\x17.apollo.common.PointENU\"5\n\x0bLineSegment\x12&\n\x05point\x18\x01 \x03(\x0b\x32\x17.apollo.common.PointENU\"\xac\x01\n\x0c\x43urveSegment\x12\x31\n\x0cline_segment\x18\x01 \x01(\x0b\x32\x19.apollo.hdmap.LineSegmentH\x00\x12\t\n\x01s\x18\x06 \x01(\x01\x12/\n\x0estart_position\x18\x07 \x01(\x0b\x32\x17.apollo.common.PointENU\x12\x0f\n\x07heading\x18\x08 \x01(\x01\x12\x0e\n\x06length\x18\t \x01(\x01\x42\x0c\n\ncurve_type\"4\n\x05\x43urve\x12+\n\x07segment\x18\x01 \x03(\x0b\x32\x1a.apollo.hdmap.CurveSegment'
+  serialized_pb=b'\n$modules/map/proto/map_geometry.proto\x12\x0c\x61pollo.hdmap\x1a#modules/common/proto/geometry.proto\"1\n\x07Polygon\x12&\n\x05point\x18\x01 \x03(\x0b\x32\x17.apollo.common.PointENU\"5\n\x0bLineSegment\x12&\n\x05point\x18\x01 \x03(\x0b\x32\x17.apollo.common.PointENU\"\xac\x01\n\x0c\x43urveSegment\x12\x31\n\x0cline_segment\x18\x01 \x01(\x0b\x32\x19.apollo.hdmap.LineSegmentH\x00\x12\t\n\x01s\x18\x06 \x01(\x01\x12/\n\x0estart_position\x18\x07 \x01(\x0b\x32\x17.apollo.common.PointENU\x12\x0f\n\x07heading\x18\x08 \x01(\x01\x12\x0e\n\x06length\x18\t \x01(\x01\x42\x0c\n\ncurve_type\"E\n\x05\x43urve\x12+\n\x07segment\x18\x01 \x03(\x0b\x32\x1a.apollo.hdmap.CurveSegment\x12\x0f\n\x07virtual\x18\x02 \x01(\x08'
   ,
   dependencies=[modules_dot_common_dot_proto_dot_geometry__pb2.DESCRIPTOR,])
 
@@ -171,6 +171,13 @@ _CURVE = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='virtual', full_name='apollo.hdmap.Curve.virtual', index=1,
+      number=2, type=8, cpp_type=7, label=1,
+      has_default_value=False, default_value=False,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
   ],
   extensions=[
   ],
@@ -184,7 +191,7 @@ _CURVE = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=372,
-  serialized_end=424,
+  serialized_end=441,
 )
 
 _POLYGON.fields_by_name['point'].message_type = modules_dot_common_dot_proto_dot_geometry__pb2._POINTENU

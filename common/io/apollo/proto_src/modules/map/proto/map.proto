@@ -3,6 +3,10 @@ syntax = "proto2";
 package apollo.hdmap;
 
 import "modules/map/proto/map_clear_area.proto";
+import "modules/map/proto/map_no_auto_driving_zone.proto";
+import "modules/map/proto/map_tunnel.proto";
+import "modules/map/proto/map_underpass.proto";
+import "modules/map/proto/map_alleyway.proto";
 import "modules/map/proto/map_crosswalk.proto";
 import "modules/map/proto/map_junction.proto";
 import "modules/map/proto/map_lane.proto";
@@ -15,11 +19,7 @@ import "modules/map/proto/map_road.proto";
 import "modules/map/proto/map_parking_space.proto";
 import "modules/map/proto/map_pnc_junction.proto";
 import "modules/map/proto/map_rsu.proto";
-import "modules/map/proto/map_no_auto_driving_zone.proto";
-import "modules/map/proto/map_tunnel.proto";
-import "modules/map/proto/map_underpass.proto";
 import "modules/map/proto/map_construction_zone.proto";
-import "modules/map/proto/map_alleyway.proto";
 
 // This message defines how we project the ellipsoidal Earth surface to a plane.
 message Projection {

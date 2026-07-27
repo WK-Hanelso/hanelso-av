@@ -27,6 +27,16 @@ message YieldOverlapInfo {}
 
 message ClearAreaOverlapInfo {}
 
+message NoAutoDrivingZoneOverlapInfo {}
+
+message ConstructionZoneOverlapInfo {}
+
+message TunnelOverlapInfo {}
+
+message UnderpassOverlapInfo {}
+
+message AlleywayOverlapInfo {}
+
 message SpeedBumpOverlapInfo {}
 
 message ParkingSpaceOverlapInfo {}
@@ -56,6 +66,11 @@ message ObjectOverlapInfo {
     ParkingSpaceOverlapInfo parking_space_overlap_info = 11;
     PNCJunctionOverlapInfo pnc_junction_overlap_info = 12;
     RSUOverlapInfo rsu_overlap_info = 13;
+    NoAutoDrivingZoneOverlapInfo no_auto_driving_zone_overlap_info = 14;
+    TunnelOverlapInfo tunnel_overlap_info = 15;
+    UnderpassOverlapInfo underpass_overlap_info = 16;
+    ConstructionZoneOverlapInfo construction_zone_overlap_info = 17;
+    AlleywayOverlapInfo alleyway_overlap_info = 18;
   }
 }
 
