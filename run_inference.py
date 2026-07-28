@@ -43,6 +43,12 @@ def parse_args() -> argparse.Namespace:
         action=argparse.BooleanOptionalAction,
         default=True,
     )
+    parser.add_argument(
+        "--postprocess",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Run the original pluto TrajectoryEvaluator/EmergencyBrake post-processing.",
+    )
     return parser.parse_args()
 
 
@@ -50,6 +56,8 @@ def build_render(
     normalized_data: Dict[str, Any],
     output_trajectory: np.ndarray,
     out_path: Path,
+    post_best_trajectory: np.ndarray | None = None,
+    post_emergency: bool = False,
 ) -> None:
     fig, ax = plt.subplots(figsize=(9, 9), dpi=140)
 
@@ -101,8 +109,30 @@ def build_render(
         color="#dc2626",
         linewidth=3.0,
         alpha=0.95,
+        label="raw output_trajectory",
     )
     ax.scatter(output_trajectory[0, 0], output_trajectory[0, 1], s=20, color="#dc2626")
+
+    if post_best_trajectory is not None:
+        best_label = "post-processed best"
+        if post_emergency:
+            best_label += " (emergency brake)"
+        ax.plot(
+            post_best_trajectory[:, 0],
+            post_best_trajectory[:, 1],
+            color="#16a34a",
+            linewidth=2.4,
+            linestyle="--",
+            alpha=0.95,
+            label=best_label,
+        )
+        ax.scatter(
+            post_best_trajectory[0, 0],
+            post_best_trajectory[0, 1],
+            s=20,
+            color="#16a34a",
+        )
+    ax.legend(loc="upper right", fontsize=8)
 
     ego_width, ego_length = normalized_data["agent"]["shape"][0, 20]
     rect = plt.Rectangle(
@@ -212,6 +242,58 @@ def compare_decoders(
     }
 
 
+def summarize_postprocess(post_result: Dict[str, Any]) -> Dict[str, Any]:
+    def as_list(value: np.ndarray) -> list:
+        return [round(float(v), 6) for v in np.asarray(value).reshape(-1)]
+
+    ttc = post_result["time_to_at_fault_collision_s"]
+    return {
+        "num_candidates": post_result["num_candidates"],
+        "best_candidate_idx": post_result["best_candidate_idx"],
+        "emergency_brake": bool(post_result["emergency_brake"]),
+        "time_to_at_fault_collision_s": ("inf" if np.isinf(ttc) else float(ttc)),
+        "num_agents_in_world": post_result["num_agents_in_world"],
+        "best_in_drivable_fraction": post_result["best_in_drivable_fraction"],
+        "scores": {
+            "rule_based": as_list(post_result["rule_based_scores"]),
+            "learning_based": as_list(post_result["learning_based_scores"]),
+            "final": as_list(post_result["final_scores"]),
+        },
+        "multi_metrics": {
+            key: as_list(value) for key, value in post_result["multi_metrics"].items()
+        },
+        "weighted_metrics": {
+            key: as_list(value)
+            for key, value in post_result["weighted_metrics"].items()
+        },
+        "ego_progress_m": as_list(post_result["ego_progress_m"]),
+    }
+
+
+def run_postprocess_checks(post_result: Dict[str, Any]) -> Dict[str, Any]:
+    best_local = post_result["best_trajectory_local"]
+    step_disp = np.linalg.norm(np.diff(best_local[:, :2], axis=0), axis=1)
+    start_norm = float(np.linalg.norm(best_local[0, :2]))
+    rule_scores = np.asarray(post_result["rule_based_scores"], dtype=np.float64)
+    learning_scores = np.asarray(post_result["learning_based_scores"], dtype=np.float64)
+    return {
+        "postprocess_best_finite": bool(np.isfinite(best_local).all()),
+        "postprocess_scores_finite": bool(
+            np.isfinite(rule_scores).all() and np.isfinite(learning_scores).all()
+        ),
+        "postprocess_best_start_norm_m": start_norm,
+        "postprocess_best_start_near_origin_pass": start_norm < 5.0,
+        "postprocess_best_max_step_m": float(step_disp.max()) if len(step_disp) else 0.0,
+        "postprocess_best_step_smooth_pass": bool(
+            len(step_disp) == 0 or step_disp.max() < 2.0
+        ),
+        "postprocess_best_in_drivable_fraction": post_result[
+            "best_in_drivable_fraction"
+        ],
+        "postprocess_emergency_brake": bool(post_result["emergency_brake"]),
+    }
+
+
 def main() -> int:
     args = parse_args()
     parsed_dir = Path(args.parsed_dir)
@@ -245,11 +327,28 @@ def main() -> int:
     with torch.inference_mode():
         output = policy.infer(build_result.feature)
 
+    post_result = None
+    if args.postprocess:
+        from common.policy.pluto_postprocess import PlutoPostProcessor
+
+        postprocessor = PlutoPostProcessor(pluto_root=args.pluto_root)
+        post_result = postprocessor.run(
+            model_output=output["raw_output"],
+            normalized_data=build_result.normalized_numpy_data,
+            scene_context=build_result.scene_context,
+        )
+
     output_np = {
         key: value.detach().cpu().numpy()
         for key, value in output.items()
         if isinstance(value, torch.Tensor)
     }
+    if post_result is not None:
+        output_np["post_best_trajectory_local"] = post_result["best_trajectory_local"]
+        output_np["post_best_trajectory_global"] = post_result["best_trajectory_global"]
+        output_np["post_rule_based_scores"] = post_result["rule_based_scores"]
+        output_np["post_learning_based_scores"] = post_result["learning_based_scores"]
+        output_np["post_final_scores"] = post_result["final_scores"]
     np.savez(out_dir / "outputs.npz", **output_np)
 
     render_path = out_dir / "infer_bev.png"
@@ -257,10 +356,18 @@ def main() -> int:
         build_result.normalized_numpy_data,
         output_np["output_trajectory"][0],
         render_path,
+        post_best_trajectory=(
+            post_result["best_trajectory_local"] if post_result is not None else None
+        ),
+        post_emergency=(
+            bool(post_result["emergency_brake"]) if post_result is not None else False
+        ),
     )
 
     output_summary = summarize_output(output["raw_output"])
     checks = run_checks(build_result.normalized_numpy_data, output["raw_output"])
+    if post_result is not None:
+        checks.update(run_postprocess_checks(post_result))
     decoder_comparison = compare_decoders(build_result.feature, args)
     report = {
         "clip_id": config["clip_id"],
@@ -273,6 +380,9 @@ def main() -> int:
         "adapter_context": build_result.context,
         "output_summary": output_summary,
         "checks": checks,
+        "postprocess": (
+            summarize_postprocess(post_result) if post_result is not None else None
+        ),
         "decoder_comparison": decoder_comparison,
         "artifacts": {
             "outputs_npz": str((out_dir / "outputs.npz").resolve()),

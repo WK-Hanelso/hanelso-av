@@ -7,11 +7,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
-from shapely.geometry import Point, Polygon
 
 from common.input.pluto import (
     CATEGORY_CODES,
-    CROSSWALK_POINTS,
     DT,
     HIST_STEPS,
     LANE_POINTS,
@@ -29,12 +27,7 @@ from common.input.pluto import (
     PlutoInputBuilder,
     _cumulative_lengths,
     _min_distance_to_polyline,
-    _nearest_index,
-    _polyline_length,
-    _quat_to_yaw,
-    _resample_by_spacing,
     _resample_polyline,
-    _wrap_angle,
 )
 
 
@@ -57,6 +50,7 @@ class AdapterBuildResult:
     feature: Any
     context: Dict[str, Any]
     normalized_numpy_data: Dict[str, Any]
+    scene_context: Optional[Dict[str, Any]] = None
 
 
 class ApolloPlutoFeatureAdapter:
@@ -73,6 +67,15 @@ class ApolloPlutoFeatureAdapter:
 
         return PlutoFeature
 
+    def _import_scenario_manager(self):
+        import sys
+
+        if str(self._pluto_root) not in sys.path:
+            sys.path.insert(0, str(self._pluto_root))
+        from src.scenario_manager.scenario_manager import ScenarioManager
+
+        return ScenarioManager
+
     def build(
         self,
         parsed_dir: str,
@@ -86,12 +89,13 @@ class ApolloPlutoFeatureAdapter:
         dataset = self._builder._prepare_dataset(tables, config)
         t0_index, t0_reason = self._builder._select_t0_index(dataset, t0_time)
 
-        raw_data, context = self._build_global_data(
+        raw_data, context, scene_context = self._build_global_data(
             parsed_path,
             dataset,
             map_graph,
             t0_index,
             t0_reason,
+            map_name=str(config.get("map_name") or ""),
         )
         normalized = PlutoFeature.normalize(
             raw_data,
@@ -104,6 +108,7 @@ class ApolloPlutoFeatureAdapter:
             feature=tensor_feature,
             context=context,
             normalized_numpy_data=normalized.data,
+            scene_context=scene_context,
         )
 
     def _build_global_data(
@@ -113,7 +118,8 @@ class ApolloPlutoFeatureAdapter:
         map_graph: dict,
         t0_index: int,
         t0_reason: str,
-    ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        map_name: str = "",
+    ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
         sample_tokens = dataset["sample_tokens"]
         sample_ts_sec = dataset["sample_ts_sec"]
         history_indices, history_deltas = self._builder._history_target_indices(sample_ts_sec, t0_index)
@@ -207,12 +213,23 @@ class ApolloPlutoFeatureAdapter:
             static_valid_mask[slot] = True
 
         route_payload = self._load_route_payload(parsed_path, t0_index, dataset)
-        reference_line, route_debug = self._build_reference_line_global(
+        ego_state = self._build_ego_state(dataset, t0_index)
+        scenario_bundle = self._build_scenario_manager(
             map_graph=map_graph,
+            map_name=map_name,
             route_payload=route_payload,
-            ego_global_xy=dataset["ego_positions"][t0_index],
-            ego_heading=dataset["ego_headings"][t0_index],
+            ego_state=ego_state,
         )
+        reference_line, route_debug = self._pack_reference_lines(
+            scenario_bundle["reference_lines"]
+        )
+        route_debug["selected_route_event_timestamp_ns"] = route_payload.get(
+            "selected_event_timestamp_ns"
+        )
+        route_debug["selected_route_event_topic"] = route_payload.get(
+            "selected_event_topic"
+        )
+        route_debug["route_lane_count"] = len(scenario_bundle["route_lane_ids"])
         map_features, map_notes = self._build_map_features_global(
             map_graph=map_graph,
             ego_global_xy=origin_xy,
@@ -271,6 +288,7 @@ class ApolloPlutoFeatureAdapter:
             "adapter_notes": [
                 "Agent tensors use T=101 with history/present in slots [0:21] and future slots zero-filled with valid_mask=False.",
                 "Static objects are approximated from low-speed tracked annotations at t0 and mapped to GENERIC static category.",
+                "Reference lines come from the original pluto ScenarioManager/RouteManager driven through ApolloMap (C-SWM-017); the C-SWM-015 reimplementation was removed.",
                 "Reference line is built from map+route only; ego future poses are not referenced.",
                 "reference_line.future_projection is zero-filled intentionally to avoid ego future leakage.",
                 "Traffic light status is unresolved from the Apollo feed and set to UNKNOWN for every map polygon.",
@@ -278,84 +296,154 @@ class ApolloPlutoFeatureAdapter:
             "map_notes": map_notes,
             "route_debug": route_debug,
         }
-        return raw_data, context
 
-    def _build_reference_line_global(
+        scene_context = self._build_scene_context(
+            dataset=dataset,
+            t0_index=t0_index,
+            ego_state=ego_state,
+            scenario_bundle=scenario_bundle,
+            selected_agents=selected_agents,
+            selected_static=selected_static,
+        )
+        return raw_data, context, scene_context
+
+    def _build_ego_state(self, dataset: Dict[str, Any], t0_index: int):
+        """Builds a nuPlan EgoState at t0 from parsed ego pose/dynamics.
+
+        The parsed Apollo localization pose is treated as the rear-axle pose
+        (consistent with the whole feature pipeline). Longitudinal acceleration
+        is a signed finite-difference of speed; the tire steering angle is a
+        kinematic estimate from yaw rate (steering_percentage is not an angle).
+        """
+        from nuplan.common.actor_state.ego_state import EgoState
+        from nuplan.common.actor_state.state_representation import (
+            StateSE2,
+            StateVector2D,
+            TimePoint,
+        )
+        from nuplan.common.actor_state.vehicle_parameters import (
+            get_pacifica_parameters,
+        )
+
+        xy = dataset["ego_positions"][t0_index]
+        heading = float(dataset["ego_headings"][t0_index])
+        speed = float(dataset["ego_speed"][t0_index])
+        yaw_rate = float(dataset["ego_ang_vel"][t0_index])
+        ts_ns = int(dataset["samples"][t0_index]["timestamp"])
+
+        if t0_index >= 1:
+            dt_sec = max(
+                float(
+                    dataset["sample_ts_sec"][t0_index]
+                    - dataset["sample_ts_sec"][t0_index - 1]
+                ),
+                1e-3,
+            )
+            signed_accel = (
+                speed - float(dataset["ego_speed"][t0_index - 1])
+            ) / dt_sec
+        else:
+            signed_accel = float(dataset["ego_accel"][t0_index])
+
+        vehicle_parameters = get_pacifica_parameters()
+        if speed > 0.5:
+            steering_angle = float(
+                np.clip(
+                    math.atan(vehicle_parameters.wheel_base * yaw_rate / speed),
+                    -0.61,
+                    0.61,
+                )
+            )
+        else:
+            steering_angle = 0.0
+
+        return EgoState.build_from_rear_axle(
+            rear_axle_pose=StateSE2(float(xy[0]), float(xy[1]), heading),
+            rear_axle_velocity_2d=StateVector2D(speed, 0.0),
+            rear_axle_acceleration_2d=StateVector2D(signed_accel, 0.0),
+            tire_steering_angle=steering_angle,
+            time_point=TimePoint(ts_ns // 1000),
+            vehicle_parameters=vehicle_parameters,
+            angular_vel=yaw_rate,
+        )
+
+    def _build_scenario_manager(
         self,
         map_graph: dict,
+        map_name: str,
         route_payload: Dict[str, Any],
-        ego_global_xy: np.ndarray,
-        ego_heading: float,
-    ) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
-        lane_lookup = {
-            str(lane["id"]): lane for lane in map_graph.get("lanes", [])
-        }
-        route_lane_ids = [str(lane_id) for lane_id in route_payload.get("route_lane_ids", [])]
+        ego_state: Any,
+    ) -> Dict[str, Any]:
+        """Drives the original pluto ScenarioManager/RouteManager over ApolloMap.
+
+        This replaces the C-SWM-015 reference-line reimplementation (which
+        over-generated R by skipping the original "merge repeated lanes"
+        candidate-pruning step). The original ScenarioManager output is
+        authoritative.
+        """
+        from common.map.apollo_map import ApolloMap
+
+        ScenarioManager = self._import_scenario_manager()
+
+        route_lane_ids = [
+            str(lane_id) for lane_id in route_payload.get("route_lane_ids", [])
+        ]
         if not route_lane_ids:
             raise ValueError(
-                "route.json has no route_lane_ids; cannot build leakage-free reference lines."
+                "route.json has no route_lane_ids; cannot build reference lines."
             )
 
-        route_roadblocks = self._route_roadblocks_from_lane_ids(route_lane_ids, map_graph)
-        if not route_roadblocks:
+        apollo_map = ApolloMap(map_name=map_name or None, payload=map_graph)
+        original_roadblock_ids = self._route_roadblocks_from_lane_ids(
+            route_lane_ids, map_graph
+        )
+        if not original_roadblock_ids:
             raise ValueError(
                 "route.json route_lane_ids do not map to any roadblocks in map_graph."
             )
+        public_roadblock_ids = [
+            apollo_map.to_public_roadblock_id(rb_id)
+            for rb_id in original_roadblock_ids
+        ]
 
-        ego_center_xy = ego_global_xy + np.array(
-            [
-                math.cos(ego_heading) * (PACIFICA_DIMS[1] * 0.5),
-                math.sin(ego_heading) * (PACIFICA_DIMS[1] * 0.5),
-            ],
-            dtype=np.float64,
+        # Same radius formula as PlutoPlanner: eval_dt * eval_num_frames * 60 / 4.
+        radius = 0.1 * 80 * 60.0 / 4.0
+        scenario_manager = ScenarioManager(
+            map_api=apollo_map,
+            ego_state=ego_state,
+            route_roadblocks_ids=public_roadblock_ids,
+            radius=radius,
         )
-        candidate_start_lanes = self._get_candidate_starting_lanes(
-            ego_center_xy=ego_center_xy,
-            ego_rear_axle_xy=ego_global_xy,
-            ego_heading=ego_heading,
-            map_graph=map_graph,
-            route_roadblocks=route_roadblocks,
+        loaded_roadblock_ids = scenario_manager.get_route_roadblock_ids(process=True)
+        scenario_manager.update_ego_state(ego_state)
+        scenario_manager.update_drivable_area_map()
+        reference_lines = scenario_manager.get_reference_lines(
+            length=REF_STEPS * REF_SPACING
         )
-        if not candidate_start_lanes:
-            raise ValueError(
-                "No candidate starting lane found within 3m on-route with heading error < pi/2. "
-                f"route_roadblocks={route_roadblocks[:8]}"
-            )
+        if not reference_lines:
+            raise ValueError("Original ScenarioManager produced no reference lines.")
 
-        discrete_paths: List[np.ndarray] = []
-        for start_lane_id in candidate_start_lanes:
-            discrete_paths.extend(
-                self._find_all_candidate_routes(
-                    ego_global_xy=ego_global_xy,
-                    start_lane_id=start_lane_id,
-                    lane_lookup=lane_lookup,
-                    route_roadblocks=route_roadblocks,
-                    max_length=120.0,
-                    max_depth=15,
-                )
-            )
+        return {
+            "map_api": apollo_map,
+            "scenario_manager": scenario_manager,
+            "reference_lines": reference_lines,
+            "route_lane_ids": route_lane_ids,
+            "route_roadblock_ids_input": public_roadblock_ids,
+            "route_roadblock_ids_loaded": list(loaded_roadblock_ids),
+        }
 
-        trimmed_paths: List[np.ndarray] = []
-        trimmed_lengths: List[float] = []
-        for path in discrete_paths:
-            trimmed_path, trimmed_length = self._trim_path_from_ego(
-                ego_global_xy,
-                path,
-                length=120.0,
-            )
-            trimmed_paths.append(trimmed_path)
-            trimmed_lengths.append(trimmed_length)
+    def _pack_reference_lines(
+        self, reference_lines: List[np.ndarray]
+    ) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
+        """Packs ScenarioManager reference lines exactly like the original
+        `_get_reference_line_feature` (1 m x REF_STEPS via 0.25 m subsample[::4]).
 
-        length_mask = np.array(trimmed_lengths, dtype=np.float64) > 96.0
-        if length_mask.any() and not length_mask.all():
-            trimmed_paths = [trimmed_paths[i] for i in np.flatnonzero(length_mask)]
-            trimmed_lengths = [trimmed_lengths[i] for i in np.flatnonzero(length_mask)]
-
-        merged_paths = self._deduplicate_reference_paths(trimmed_paths)
-        if not merged_paths:
-            raise ValueError(
-                "Reference line route search produced no valid trimmed paths after filtering/dedup."
-            )
+        future_projection stays zero-filled: it is derived from ego future
+        poses in the original trainer and would leak the future at inference.
+        """
+        merged_paths = [
+            self._resample_path_quarter_meter(line) for line in reference_lines
+        ]
 
         position = np.zeros((len(merged_paths), REF_STEPS, 2), dtype=np.float64)
         vector = np.zeros((len(merged_paths), REF_STEPS, 2), dtype=np.float64)
@@ -384,18 +472,157 @@ class ApolloPlutoFeatureAdapter:
                 "future_projection": future_projection,
             },
             {
-                "route_lane_count": len(route_lane_ids),
-                "route_roadblock_count": len(route_roadblocks),
-                "candidate_start_lane_ids": candidate_start_lanes,
-                "candidate_path_count_raw": len(discrete_paths),
-                "candidate_path_count_trimmed": len(trimmed_paths),
+                "reference_line_source": "original ScenarioManager.get_reference_lines via ApolloMap",
                 "reference_line_count": len(merged_paths),
+                "reference_line_shapes": [list(line.shape) for line in reference_lines],
                 "reference_line_valid_points": packed_counts,
-                "selected_route_event_timestamp_ns": route_payload.get("selected_event_timestamp_ns"),
-                "selected_route_event_topic": route_payload.get("selected_event_topic"),
                 "leakage_free": True,
             },
         )
+
+    @staticmethod
+    def _resample_path_quarter_meter(line: np.ndarray) -> np.ndarray:
+        """Resamples an (M, 3) [x, y, heading] polyline at 0.25 m spacing so the
+        original 1 m pack (subsample[::4]) applies to ApolloMap's 0.5 m discrete
+        paths the same way it applies to nuPlan's 0.25 m discrete paths."""
+        if len(line) == 0:
+            return np.zeros((0, 3), dtype=np.float64)
+        xy = np.asarray(line[:, :2], dtype=np.float64)
+        cumulative = _cumulative_lengths(xy)
+        total = float(cumulative[-1]) if len(cumulative) else 0.0
+        targets = np.arange(0.0, total + 1e-6, 0.25, dtype=np.float64)
+        if len(targets) == 0:
+            targets = np.zeros((1,), dtype=np.float64)
+        out = np.zeros((len(targets), 3), dtype=np.float64)
+        out[:, :2] = ApolloPlutoFeatureAdapter._sample_polyline_at_progress(
+            xy, cumulative, targets
+        )
+        out[:, 2] = ApolloPlutoFeatureAdapter._sample_heading_at_progress(
+            np.asarray(line[:, 2], dtype=np.float64), cumulative, targets
+        )
+        return out
+
+    def _build_scene_context(
+        self,
+        dataset: Dict[str, Any],
+        t0_index: int,
+        ego_state: Any,
+        scenario_bundle: Dict[str, Any],
+        selected_agents: List[str],
+        selected_static: List[str],
+    ) -> Dict[str, Any]:
+        """Builds the nuPlan-typed scene context consumed by the deployment
+        post-processor (original TrajectoryEvaluator surfaces)."""
+        from nuplan.common.actor_state.agent import Agent
+        from nuplan.common.actor_state.oriented_box import OrientedBox
+        from nuplan.common.actor_state.scene_object import SceneObjectMetadata
+        from nuplan.common.actor_state.state_representation import (
+            StateSE2,
+            StateVector2D,
+        )
+        from nuplan.common.actor_state.static_object import StaticObject
+        from nuplan.common.actor_state.tracked_objects import TrackedObjects
+        from nuplan.common.actor_state.tracked_objects_types import TrackedObjectType
+        from nuplan.planning.simulation.observation.observation_type import (
+            DetectionsTracks,
+        )
+
+        dynamic_type_by_category = {
+            "vehicle": TrackedObjectType.VEHICLE,
+            "pedestrian": TrackedObjectType.PEDESTRIAN,
+            "bicycle": TrackedObjectType.BICYCLE,
+        }
+
+        sample_token = dataset["sample_tokens"][t0_index]
+        timestamp_us = int(dataset["samples"][t0_index]["timestamp"]) // 1000
+        track_data = dataset["track_data"]
+
+        tracked_objects = []
+        for instance_token in selected_agents:
+            track = track_data[instance_token]
+            ann_idx = track["sample_to_index"][sample_token]
+            center = StateSE2(
+                float(track["positions"][ann_idx][0]),
+                float(track["positions"][ann_idx][1]),
+                float(track["headings"][ann_idx]),
+            )
+            box = OrientedBox(
+                center,
+                length=float(track["lengths"][ann_idx]),
+                width=float(track["widths"][ann_idx]),
+                height=float(track["heights"][ann_idx]),
+            )
+            metadata = SceneObjectMetadata(
+                timestamp_us=timestamp_us,
+                token=instance_token,
+                track_id=None,
+                track_token=instance_token,
+                category_name=str(track["category"]),
+            )
+            tracked_objects.append(
+                Agent(
+                    tracked_object_type=dynamic_type_by_category.get(
+                        str(track["category"]), TrackedObjectType.VEHICLE
+                    ),
+                    oriented_box=box,
+                    velocity=StateVector2D(
+                        float(track["velocities"][ann_idx][0]),
+                        float(track["velocities"][ann_idx][1]),
+                    ),
+                    metadata=metadata,
+                )
+            )
+
+        for instance_token in selected_static:
+            track = track_data[instance_token]
+            ann_idx = track["sample_to_index"][sample_token]
+            center = StateSE2(
+                float(track["positions"][ann_idx][0]),
+                float(track["positions"][ann_idx][1]),
+                float(track["headings"][ann_idx]),
+            )
+            box = OrientedBox(
+                center,
+                length=float(track["lengths"][ann_idx]),
+                width=float(track["widths"][ann_idx]),
+                height=float(track["heights"][ann_idx]),
+            )
+            metadata = SceneObjectMetadata(
+                timestamp_us=timestamp_us,
+                token=instance_token,
+                track_id=None,
+                track_token=instance_token,
+                category_name=str(track["category"]),
+            )
+            tracked_objects.append(
+                StaticObject(
+                    tracked_object_type=TrackedObjectType.GENERIC_OBJECT,
+                    oriented_box=box,
+                    metadata=metadata,
+                )
+            )
+
+        scenario_manager = scenario_bundle["scenario_manager"]
+        return {
+            "ego_state": ego_state,
+            "detections": DetectionsTracks(TrackedObjects(tracked_objects)),
+            "traffic_light_data": [],
+            "scenario_manager": scenario_manager,
+            "map_api": scenario_bundle["map_api"],
+            "route_lane_dict": scenario_manager.get_route_lane_dicts(),
+            "drivable_area_map": scenario_manager.drivable_area_map,
+            "reference_lines_global": scenario_bundle["reference_lines"],
+            "agent_tokens": list(selected_agents),
+            "agent_rows": list(range(1, len(selected_agents) + 1)),
+            "static_tokens": list(selected_static),
+            "hist_steps": HIST_STEPS,
+            "t0_timestamp_us": timestamp_us,
+            "notes": [
+                "traffic_light_data is empty: no traffic light state in the parsed Apollo feed.",
+                "Agent/static boxes come from t0 sample_annotation (center pose, w/l/h).",
+                "Ego acceleration is a signed speed finite-difference; steering angle is a yaw-rate kinematic estimate.",
+            ],
+        }
 
     def _build_map_features_global(
         self,
@@ -592,202 +819,6 @@ class ApolloPlutoFeatureAdapter:
                 ordered.append(str(roadblock_id))
                 seen.add(str(roadblock_id))
         return ordered
-
-    def _get_candidate_starting_lanes(
-        self,
-        ego_center_xy: np.ndarray,
-        ego_rear_axle_xy: np.ndarray,
-        ego_heading: float,
-        map_graph: dict,
-        route_roadblocks: List[str],
-    ) -> List[str]:
-        lane_to_roadblock = map_graph.get("lane_to_roadblock", {})
-        candidates: List[dict] = []
-        for lane in map_graph.get("lanes", []):
-            centerline = np.asarray(lane["central"], dtype=np.float64)
-            if len(centerline) < 2:
-                continue
-            left = np.asarray(lane["left"], dtype=np.float64)[:, :2]
-            right = np.asarray(lane["right"], dtype=np.float64)[:, :2]
-            lane_polygon = np.vstack([left, right[::-1]])
-            if len(lane_polygon) < 3:
-                continue
-            if Polygon(lane_polygon).distance(Point(*ego_center_xy)) > 3.1:
-                continue
-            if str(lane_to_roadblock.get(lane["id"], "")) not in route_roadblocks:
-                continue
-            if float(lane.get("length") or 0.0) <= 2.0:
-                continue
-            if (
-                self._get_lane_angle_error(centerline, ego_rear_axle_xy, ego_heading)
-                >= math.pi / 2.0
-            ):
-                continue
-            candidates.append(lane)
-        return [str(lane["id"]) for lane in candidates]
-
-    def _find_all_candidate_routes(
-        self,
-        ego_global_xy: np.ndarray,
-        start_lane_id: str,
-        lane_lookup: Dict[str, dict],
-        route_roadblocks: List[str],
-        max_length: float,
-        max_depth: int,
-    ) -> List[np.ndarray]:
-        candidate_routes: List[List[str]] = []
-        start_lane = lane_lookup[start_lane_id]
-        start_centerline = np.asarray(start_lane["central"], dtype=np.float64)
-        start_progress = self._project_progress_along_polyline(ego_global_xy, start_centerline[:, :2])
-        init_offset = -start_progress
-        route_roadblock_set = set(route_roadblocks)
-        lane_to_roadblock = {
-            lane_id: f"{lane.get('road_id')}#{lane.get('section_id')}"
-            for lane_id, lane in lane_lookup.items()
-        }
-
-        def dfs(cur_lane_id: str, visited: List[str], length_so_far: float) -> None:
-            visited.append(cur_lane_id)
-            cur_lane = lane_lookup[cur_lane_id]
-            new_length = length_so_far + float(cur_lane.get("length") or 0.0)
-            in_route_successors = [
-                str(next_lane_id)
-                for next_lane_id in cur_lane.get("successor_ids", [])
-                if str(lane_to_roadblock.get(str(next_lane_id), "")) in route_roadblock_set
-                and str(next_lane_id) in lane_lookup
-            ]
-            if (
-                len(in_route_successors) == 0
-                or len(visited) == max_depth
-                or new_length > max_length
-            ):
-                candidate_routes.append(list(visited))
-                return
-            for next_lane_id in in_route_successors:
-                dfs(next_lane_id, visited.copy(), new_length)
-
-        dfs(start_lane_id, [], init_offset)
-
-        candidate_paths: List[np.ndarray] = []
-        for lane_ids in candidate_routes:
-            discrete_path_parts = [
-                self._lane_centerline_with_heading(lane_lookup[lane_id])
-                for lane_id in lane_ids
-            ]
-            candidate_paths.append(self._concat_paths(discrete_path_parts))
-        return candidate_paths
-
-    def _trim_path_from_ego(
-        self,
-        ego_global_xy: np.ndarray,
-        path_xyz_heading: np.ndarray,
-        length: float,
-    ) -> Tuple[np.ndarray, float]:
-        if len(path_xyz_heading) == 0:
-            return np.zeros((0, 3), dtype=np.float64), 0.0
-        path_xy = path_xyz_heading[:, :2]
-        cumulative = _cumulative_lengths(path_xy)
-        start_progress = float(cumulative[0])
-        end_progress = float(cumulative[-1])
-        cur_progress = self._project_progress_along_polyline(ego_global_xy, path_xy)
-        cut_start = max(start_progress, min(cur_progress, end_progress))
-        cur_end = min(cur_progress + length, end_progress)
-        path_length = max(0.0, cur_end - cut_start)
-        if path_length <= 1e-6:
-            return np.zeros((0, 3), dtype=np.float64), 0.0
-
-        targets = np.arange(cut_start, cur_end + 1e-6, 0.25, dtype=np.float64)
-        if targets[-1] < cur_end - 1e-6:
-            targets = np.append(targets, cur_end)
-        trimmed = np.zeros((len(targets), 3), dtype=np.float64)
-        trimmed[:, :2] = self._sample_polyline_at_progress(path_xy, cumulative, targets)
-        trimmed[:, 2] = self._sample_heading_at_progress(path_xyz_heading[:, 2], cumulative, targets)
-        return trimmed, path_length
-
-    @staticmethod
-    def _deduplicate_reference_paths(paths: List[np.ndarray]) -> List[np.ndarray]:
-        remove_index = set()
-        for i in range(len(paths)):
-            if i in remove_index:
-                continue
-            for j in range(i + 1, len(paths)):
-                if j in remove_index:
-                    continue
-                min_len = min(len(paths[i]), len(paths[j]))
-                if min_len == 0:
-                    continue
-                diff = np.abs(paths[i][:min_len, :2] - paths[j][:min_len, :2]).sum(-1)
-                if float(np.max(diff)) < 0.5:
-                    remove_index.add(j)
-        return [paths[i] for i in range(len(paths)) if i not in remove_index]
-
-    @staticmethod
-    def _lane_centerline_with_heading(lane: dict) -> np.ndarray:
-        centerline = np.asarray(lane["central"], dtype=np.float64)
-        headings = np.zeros((len(centerline),), dtype=np.float64)
-        if len(centerline) >= 2:
-            deltas = np.diff(centerline[:, :2], axis=0)
-            headings[:-1] = np.arctan2(deltas[:, 1], deltas[:, 0])
-            headings[-1] = headings[-2]
-        return np.column_stack([centerline[:, :2], headings])
-
-    @staticmethod
-    def _concat_paths(path_parts: List[np.ndarray]) -> np.ndarray:
-        if not path_parts:
-            return np.zeros((0, 3), dtype=np.float64)
-        out = [path_parts[0]]
-        for part in path_parts[1:]:
-            if len(part) == 0:
-                continue
-            if len(out[-1]) and np.allclose(out[-1][-1, :2], part[0, :2]):
-                out.append(part[1:])
-            else:
-                out.append(part)
-        return np.concatenate(out, axis=0)
-
-    @staticmethod
-    def _get_lane_angle_error(
-        centerline_xyz: np.ndarray,
-        ego_global_xy: np.ndarray,
-        ego_heading: float,
-    ) -> float:
-        subsample = centerline_xyz[::4]
-        if len(subsample) < 2:
-            subsample = centerline_xyz
-        if len(subsample) == 0:
-            return math.inf
-        if len(subsample) == 1:
-            closest_heading = 0.0
-        else:
-            deltas = np.diff(subsample[:, :2], axis=0)
-            headings = np.arctan2(deltas[:, 1], deltas[:, 0])
-            headings = np.append(headings, headings[-1])
-            distances = np.linalg.norm(subsample[:, :2] - ego_global_xy[None, :], axis=1)
-            closest_heading = float(headings[int(np.argmin(distances))])
-        return abs(_wrap_angle(closest_heading - ego_heading))
-
-    @staticmethod
-    def _project_progress_along_polyline(point_xy: np.ndarray, polyline_xy: np.ndarray) -> float:
-        if len(polyline_xy) < 2:
-            return 0.0
-        cumulative = _cumulative_lengths(polyline_xy)
-        best_progress = 0.0
-        best_distance = float("inf")
-        for idx in range(len(polyline_xy) - 1):
-            p0 = polyline_xy[idx]
-            p1 = polyline_xy[idx + 1]
-            segment = p1 - p0
-            seg_len_sq = float(np.dot(segment, segment))
-            if seg_len_sq <= 1e-9:
-                continue
-            t = float(np.dot(point_xy - p0, segment) / seg_len_sq)
-            t = max(0.0, min(1.0, t))
-            proj = p0 + t * segment
-            distance = float(np.linalg.norm(point_xy - proj))
-            if distance < best_distance:
-                best_distance = distance
-                best_progress = float(cumulative[idx] + t * math.sqrt(seg_len_sq))
-        return best_progress
 
     @staticmethod
     def _sample_polyline_at_progress(

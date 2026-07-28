@@ -370,10 +370,21 @@ class ApolloLane(LaneGraphEdgeMapObject):
 
 
 class ApolloMap(AbstractMap):
-    def __init__(self, map_path: str | Path, map_name: Optional[str] = None) -> None:
-        self._map_path = Path(map_path)
-        payload = json.loads(self._map_path.read_text())
-        self._map_name = str(map_name or self._map_path.parent.name)
+    def __init__(
+        self,
+        map_path: Optional[str | Path] = None,
+        map_name: Optional[str] = None,
+        payload: Optional[dict] = None,
+    ) -> None:
+        if payload is None:
+            if map_path is None:
+                raise ValueError("ApolloMap requires map_path or payload")
+            self._map_path = Path(map_path)
+            payload = json.loads(self._map_path.read_text())
+        else:
+            self._map_path = Path(map_path) if map_path is not None else None
+        default_name = self._map_path.parent.name if self._map_path is not None else "apollo_map"
+        self._map_name = str(map_name or default_name)
         self._payload = payload
 
         self._public_by_original: Dict[Tuple[str, str], str] = {}

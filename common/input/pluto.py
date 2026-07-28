@@ -247,6 +247,13 @@ class PlutoInputBuilder(InputBuilder):
             headings = np.array([_quat_to_yaw(row["rotation"]) for row in ordered], dtype=np.float64)
             widths = np.array([float(row["size"][0]) for row in ordered], dtype=np.float64)
             lengths = np.array([float(row["size"][1]) for row in ordered], dtype=np.float64)
+            heights = np.array(
+                [
+                    float(row["size"][2]) if len(row["size"]) > 2 else 1.8
+                    for row in ordered
+                ],
+                dtype=np.float64,
+            )
             velocities = np.zeros((len(ordered), 2), dtype=np.float64)
             if len(ordered) >= 2:
                 for idx in range(len(ordered)):
@@ -264,6 +271,7 @@ class PlutoInputBuilder(InputBuilder):
                 "headings": headings,
                 "widths": widths,
                 "lengths": lengths,
+                "heights": heights,
                 "velocities": velocities,
                 "category": instance_category.get(instance_token, "unknown"),
             }
