@@ -111,6 +111,104 @@ class ApolloPlutoFeatureAdapter:
             scene_context=scene_context,
         )
 
+    # ------------------------------------------------------------- sim API
+    #
+    # C-SWM-018: repeated per-frame builds for the simulation driver.
+    #   prepare_clip()  loads/caches everything that is frame-independent
+    #                   (parsed tables, route payload, ApolloMap).
+    #   build_frame()   builds a PlutoFeature for an arbitrary log frame
+    #                   (open-loop) or with an injected sim ego history
+    #                   (closed-loop).  Normalization/packing reuses the
+    #                   exact same code path as build().
+    #
+    # sim_ego contract (all history arrays cover the HIST_STEPS window,
+    # oldest first, index -1 = current sim state; global/UTM coords,
+    # rear-axle pose convention identical to the parsed log):
+    #   {
+    #     "position":        (21, 2) float64  global xy
+    #     "heading":         (21,)   float64
+    #     "velocity_global": (21, 2) float64  global velocity vector
+    #     "valid_mask":      (21,)   bool
+    #     "current_state":   (7,)    [x, y, heading, speed, accel,
+    #                                 steering_angle, yaw_rate]
+    #     "ego_state":       nuplan EgoState at the current sim time
+    #   }
+    # Ego log data is NOT read when sim_ego is given (no ego-future
+    # leakage); agents/statics come from the log frame t0_index chosen by
+    # the caller (progress-aligned in closed-loop).
+
+    def prepare_clip(
+        self,
+        parsed_dir: str,
+        map_graph: dict,
+        config: dict,
+    ) -> Dict[str, Any]:
+        """Loads per-clip inputs once so build_frame() can run per frame."""
+        from common.map.apollo_map import ApolloMap
+
+        parsed_path = Path(parsed_dir)
+        tables = self._builder._load_tables(parsed_path)
+        dataset = self._builder._prepare_dataset(tables, config)
+        route_path = parsed_path / "route.json"
+        if not route_path.exists():
+            raise FileNotFoundError(
+                f"Missing {route_path}; parse route extraction before simulation."
+            )
+        route_payload = json.loads(route_path.read_text())
+        map_name = str(config.get("map_name") or "")
+        apollo_map = ApolloMap(map_name=map_name or None, payload=map_graph)
+        return {
+            "parsed_path": parsed_path,
+            "dataset": dataset,
+            "map_graph": map_graph,
+            "route_payload": route_payload,
+            "map_api": apollo_map,
+            "map_name": map_name,
+            "config": dict(config),
+        }
+
+    def build_frame(
+        self,
+        clip: Dict[str, Any],
+        t0_index: int,
+        sim_ego: Optional[Dict[str, Any]] = None,
+    ) -> AdapterBuildResult:
+        """Builds one PlutoFeature frame from a prepare_clip() bundle.
+
+        sim_ego=None  -> open-loop: ego history/state from the log at
+                         t0_index (route t0 check skipped: the clip-level
+                         route payload is reused for every frame).
+        sim_ego=dict  -> closed-loop: ego row comes exclusively from the
+                         injected sim history; agents/statics are fetched
+                         from log frame t0_index.
+        """
+        PlutoFeature = self._import_pluto_feature()
+        t0_reason = "sim_open_loop_frame" if sim_ego is None else "sim_closed_loop_frame"
+        raw_data, context, scene_context = self._build_global_data(
+            clip["parsed_path"],
+            clip["dataset"],
+            clip["map_graph"],
+            t0_index,
+            t0_reason,
+            map_name=clip["map_name"],
+            ego_override=sim_ego,
+            route_payload=clip["route_payload"],
+            map_api=clip["map_api"],
+        )
+        normalized = PlutoFeature.normalize(
+            raw_data,
+            first_time=True,
+            radius=RADIUS,
+            hist_steps=HIST_STEPS,
+        )
+        tensor_feature = PlutoFeature.collate([normalized.to_feature_tensor()])
+        return AdapterBuildResult(
+            feature=tensor_feature,
+            context=context,
+            normalized_numpy_data=normalized.data,
+            scene_context=scene_context,
+        )
+
     def _build_global_data(
         self,
         parsed_path: Path,
@@ -119,12 +217,21 @@ class ApolloPlutoFeatureAdapter:
         t0_index: int,
         t0_reason: str,
         map_name: str = "",
+        ego_override: Optional[Dict[str, Any]] = None,
+        route_payload: Optional[Dict[str, Any]] = None,
+        map_api: Optional[Any] = None,
     ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
         sample_tokens = dataset["sample_tokens"]
         sample_ts_sec = dataset["sample_ts_sec"]
         history_indices, history_deltas = self._builder._history_target_indices(sample_ts_sec, t0_index)
-        origin_xy = dataset["ego_positions"][t0_index].copy()
-        angle = float(dataset["ego_headings"][t0_index])
+        if ego_override is None:
+            origin_xy = dataset["ego_positions"][t0_index].copy()
+            angle = float(dataset["ego_headings"][t0_index])
+        else:
+            origin_xy = np.asarray(
+                ego_override["position"][-1], dtype=np.float64
+            ).copy()
+            angle = float(ego_override["heading"][-1])
 
         agent_position = np.zeros((MAX_AGENTS, TOTAL_STEPS, 2), dtype=np.float64)
         agent_heading = np.zeros((MAX_AGENTS, TOTAL_STEPS), dtype=np.float64)
@@ -133,20 +240,29 @@ class ApolloPlutoFeatureAdapter:
         agent_category = np.zeros((MAX_AGENTS,), dtype=np.int8)
         agent_valid_mask = np.zeros((MAX_AGENTS, TOTAL_STEPS), dtype=bool)
 
-        ego_positions_hist = dataset["ego_positions"][history_indices]
-        ego_headings_hist = dataset["ego_headings"][history_indices]
-        ego_speed_hist = dataset["ego_speed"][history_indices]
-        ego_vectors_global = np.stack(
-            [ego_speed_hist * np.cos(ego_headings_hist), ego_speed_hist * np.sin(ego_headings_hist)],
-            axis=1,
-        )
+        if ego_override is None:
+            ego_positions_hist = dataset["ego_positions"][history_indices]
+            ego_headings_hist = dataset["ego_headings"][history_indices]
+            ego_speed_hist = dataset["ego_speed"][history_indices]
+            ego_vectors_global = np.stack(
+                [ego_speed_hist * np.cos(ego_headings_hist), ego_speed_hist * np.sin(ego_headings_hist)],
+                axis=1,
+            )
+            ego_hist_valid = history_deltas <= (DT * 0.6)
+        else:
+            ego_positions_hist = np.asarray(ego_override["position"], dtype=np.float64)
+            ego_headings_hist = np.asarray(ego_override["heading"], dtype=np.float64)
+            ego_vectors_global = np.asarray(
+                ego_override["velocity_global"], dtype=np.float64
+            )
+            ego_hist_valid = np.asarray(ego_override["valid_mask"], dtype=bool)
 
         agent_position[0, :HIST_STEPS] = ego_positions_hist
         agent_heading[0, :HIST_STEPS] = ego_headings_hist
         agent_velocity[0, :HIST_STEPS] = ego_vectors_global
         agent_shape[0] = np.array(dataset["ego_dims"], dtype=np.float64)
         agent_category[0] = CATEGORY_CODES["ego"]
-        agent_valid_mask[0, :HIST_STEPS] = history_deltas <= (DT * 0.6)
+        agent_valid_mask[0, :HIST_STEPS] = ego_hist_valid
 
         t0_sample_token = sample_tokens[t0_index]
         dynamic_candidates: List[Tuple[float, str]] = []
@@ -212,13 +328,18 @@ class ApolloPlutoFeatureAdapter:
             )
             static_valid_mask[slot] = True
 
-        route_payload = self._load_route_payload(parsed_path, t0_index, dataset)
-        ego_state = self._build_ego_state(dataset, t0_index)
+        if route_payload is None:
+            route_payload = self._load_route_payload(parsed_path, t0_index, dataset)
+        if ego_override is None:
+            ego_state = self._build_ego_state(dataset, t0_index)
+        else:
+            ego_state = ego_override["ego_state"]
         scenario_bundle = self._build_scenario_manager(
             map_graph=map_graph,
             map_name=map_name,
             route_payload=route_payload,
             ego_state=ego_state,
+            map_api=map_api,
         )
         reference_line, route_debug = self._pack_reference_lines(
             scenario_bundle["reference_lines"]
@@ -235,18 +356,23 @@ class ApolloPlutoFeatureAdapter:
             ego_global_xy=origin_xy,
             reference_line=reference_line,
         )
-        current_state = np.array(
-            [
-                float(origin_xy[0]),
-                float(origin_xy[1]),
-                angle,
-                float(dataset["ego_speed"][t0_index]),
-                float(dataset["ego_accel"][t0_index]),
-                float(dataset["ego_steering"][t0_index]),
-                float(dataset["ego_ang_vel"][t0_index]),
-            ],
-            dtype=np.float64,
-        )
+        if ego_override is None:
+            current_state = np.array(
+                [
+                    float(origin_xy[0]),
+                    float(origin_xy[1]),
+                    angle,
+                    float(dataset["ego_speed"][t0_index]),
+                    float(dataset["ego_accel"][t0_index]),
+                    float(dataset["ego_steering"][t0_index]),
+                    float(dataset["ego_ang_vel"][t0_index]),
+                ],
+                dtype=np.float64,
+            )
+        else:
+            current_state = np.asarray(
+                ego_override["current_state"], dtype=np.float64
+            ).copy()
 
         raw_data = {
             "agent": {
@@ -279,6 +405,7 @@ class ApolloPlutoFeatureAdapter:
             "t0_index": t0_index,
             "t0_time_sec": sample_ts_sec[t0_index],
             "t0_reason": t0_reason,
+            "ego_source": "log" if ego_override is None else "sim_override",
             "origin_xy_global": origin_xy.tolist(),
             "angle_rad_global": angle,
             "history_sample_indices": history_indices.tolist(),
@@ -373,6 +500,7 @@ class ApolloPlutoFeatureAdapter:
         map_name: str,
         route_payload: Dict[str, Any],
         ego_state: Any,
+        map_api: Optional[Any] = None,
     ) -> Dict[str, Any]:
         """Drives the original pluto ScenarioManager/RouteManager over ApolloMap.
 
@@ -393,7 +521,11 @@ class ApolloPlutoFeatureAdapter:
                 "route.json has no route_lane_ids; cannot build reference lines."
             )
 
-        apollo_map = ApolloMap(map_name=map_name or None, payload=map_graph)
+        apollo_map = (
+            map_api
+            if map_api is not None
+            else ApolloMap(map_name=map_name or None, payload=map_graph)
+        )
         original_roadblock_ids = self._route_roadblocks_from_lane_ids(
             route_lane_ids, map_graph
         )
