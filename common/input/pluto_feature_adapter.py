@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
+from shapely.geometry import Point, Polygon
 
 from common.input.pluto import (
     CATEGORY_CODES,
@@ -84,7 +86,13 @@ class ApolloPlutoFeatureAdapter:
         dataset = self._builder._prepare_dataset(tables, config)
         t0_index, t0_reason = self._builder._select_t0_index(dataset, t0_time)
 
-        raw_data, context = self._build_global_data(dataset, map_graph, t0_index, t0_reason)
+        raw_data, context = self._build_global_data(
+            parsed_path,
+            dataset,
+            map_graph,
+            t0_index,
+            t0_reason,
+        )
         normalized = PlutoFeature.normalize(
             raw_data,
             first_time=True,
@@ -100,6 +108,7 @@ class ApolloPlutoFeatureAdapter:
 
     def _build_global_data(
         self,
+        parsed_path: Path,
         dataset: Dict[str, Any],
         map_graph: dict,
         t0_index: int,
@@ -197,9 +206,12 @@ class ApolloPlutoFeatureAdapter:
             )
             static_valid_mask[slot] = True
 
-        reference_line = self._build_reference_line_global(
-            dataset["ego_positions"][t0_index:],
-            dataset["ego_headings"][t0_index:],
+        route_payload = self._load_route_payload(parsed_path, t0_index, dataset)
+        reference_line, route_debug = self._build_reference_line_global(
+            map_graph=map_graph,
+            route_payload=route_payload,
+            ego_global_xy=dataset["ego_positions"][t0_index],
+            ego_heading=dataset["ego_headings"][t0_index],
         )
         map_features, map_notes = self._build_map_features_global(
             map_graph=map_graph,
@@ -259,69 +271,131 @@ class ApolloPlutoFeatureAdapter:
             "adapter_notes": [
                 "Agent tensors use T=101 with history/present in slots [0:21] and future slots zero-filled with valid_mask=False.",
                 "Static objects are approximated from low-speed tracked annotations at t0 and mapped to GENERIC static category.",
-                "Reference line is a single R=1 future ego polyline resampled at 1m spacing when richer routing data is unavailable.",
+                "Reference line is built from map+route only; ego future poses are not referenced.",
+                "reference_line.future_projection is zero-filled intentionally to avoid ego future leakage.",
                 "Traffic light status is unresolved from the Apollo feed and set to UNKNOWN for every map polygon.",
             ],
             "map_notes": map_notes,
+            "route_debug": route_debug,
         }
         return raw_data, context
 
     def _build_reference_line_global(
         self,
-        ego_future_xy: np.ndarray,
-        ego_future_heading: np.ndarray,
-    ) -> Dict[str, np.ndarray]:
-        position = np.zeros((1, REF_STEPS, 2), dtype=np.float64)
-        vector = np.zeros((1, REF_STEPS, 2), dtype=np.float64)
-        orientation = np.zeros((1, REF_STEPS), dtype=np.float64)
-        valid_mask = np.zeros((1, REF_STEPS), dtype=bool)
-        future_projection = np.zeros((1, 8, 2), dtype=np.float64)
+        map_graph: dict,
+        route_payload: Dict[str, Any],
+        ego_global_xy: np.ndarray,
+        ego_heading: float,
+    ) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
+        lane_lookup = {
+            str(lane["id"]): lane for lane in map_graph.get("lanes", [])
+        }
+        route_lane_ids = [str(lane_id) for lane_id in route_payload.get("route_lane_ids", [])]
+        if not route_lane_ids:
+            raise ValueError(
+                "route.json has no route_lane_ids; cannot build leakage-free reference lines."
+            )
 
-        if len(ego_future_xy) == 0:
-            return {
+        route_roadblocks = self._route_roadblocks_from_lane_ids(route_lane_ids, map_graph)
+        if not route_roadblocks:
+            raise ValueError(
+                "route.json route_lane_ids do not map to any roadblocks in map_graph."
+            )
+
+        ego_center_xy = ego_global_xy + np.array(
+            [
+                math.cos(ego_heading) * (PACIFICA_DIMS[1] * 0.5),
+                math.sin(ego_heading) * (PACIFICA_DIMS[1] * 0.5),
+            ],
+            dtype=np.float64,
+        )
+        candidate_start_lanes = self._get_candidate_starting_lanes(
+            ego_center_xy=ego_center_xy,
+            ego_rear_axle_xy=ego_global_xy,
+            ego_heading=ego_heading,
+            map_graph=map_graph,
+            route_roadblocks=route_roadblocks,
+        )
+        if not candidate_start_lanes:
+            raise ValueError(
+                "No candidate starting lane found within 3m on-route with heading error < pi/2. "
+                f"route_roadblocks={route_roadblocks[:8]}"
+            )
+
+        discrete_paths: List[np.ndarray] = []
+        for start_lane_id in candidate_start_lanes:
+            discrete_paths.extend(
+                self._find_all_candidate_routes(
+                    ego_global_xy=ego_global_xy,
+                    start_lane_id=start_lane_id,
+                    lane_lookup=lane_lookup,
+                    route_roadblocks=route_roadblocks,
+                    max_length=120.0,
+                    max_depth=15,
+                )
+            )
+
+        trimmed_paths: List[np.ndarray] = []
+        trimmed_lengths: List[float] = []
+        for path in discrete_paths:
+            trimmed_path, trimmed_length = self._trim_path_from_ego(
+                ego_global_xy,
+                path,
+                length=120.0,
+            )
+            trimmed_paths.append(trimmed_path)
+            trimmed_lengths.append(trimmed_length)
+
+        length_mask = np.array(trimmed_lengths, dtype=np.float64) > 96.0
+        if length_mask.any() and not length_mask.all():
+            trimmed_paths = [trimmed_paths[i] for i in np.flatnonzero(length_mask)]
+            trimmed_lengths = [trimmed_lengths[i] for i in np.flatnonzero(length_mask)]
+
+        merged_paths = self._deduplicate_reference_paths(trimmed_paths)
+        if not merged_paths:
+            raise ValueError(
+                "Reference line route search produced no valid trimmed paths after filtering/dedup."
+            )
+
+        position = np.zeros((len(merged_paths), REF_STEPS, 2), dtype=np.float64)
+        vector = np.zeros((len(merged_paths), REF_STEPS, 2), dtype=np.float64)
+        orientation = np.zeros((len(merged_paths), REF_STEPS), dtype=np.float64)
+        valid_mask = np.zeros((len(merged_paths), REF_STEPS), dtype=bool)
+        future_projection = np.zeros((len(merged_paths), 8, 2), dtype=np.float64)
+
+        packed_counts: List[int] = []
+        for route_idx, line in enumerate(merged_paths):
+            subsample = line[::4][: REF_STEPS + 1]
+            n_valid = max(0, len(subsample) - 1)
+            if n_valid == 0:
+                continue
+            position[route_idx, :n_valid] = subsample[:-1, :2]
+            vector[route_idx, :n_valid] = np.diff(subsample[:, :2], axis=0)
+            orientation[route_idx, :n_valid] = subsample[:-1, 2]
+            valid_mask[route_idx, :n_valid] = True
+            packed_counts.append(n_valid)
+
+        return (
+            {
                 "position": position,
                 "vector": vector,
                 "orientation": orientation,
                 "valid_mask": valid_mask,
                 "future_projection": future_projection,
-            }
-
-        sampled_position, sampled_valid = _resample_by_spacing(
-            ego_future_xy,
-            REF_STEPS,
-            REF_SPACING,
+            },
+            {
+                "route_lane_count": len(route_lane_ids),
+                "route_roadblock_count": len(route_roadblocks),
+                "candidate_start_lane_ids": candidate_start_lanes,
+                "candidate_path_count_raw": len(discrete_paths),
+                "candidate_path_count_trimmed": len(trimmed_paths),
+                "reference_line_count": len(merged_paths),
+                "reference_line_valid_points": packed_counts,
+                "selected_route_event_timestamp_ns": route_payload.get("selected_event_timestamp_ns"),
+                "selected_route_event_topic": route_payload.get("selected_event_topic"),
+                "leakage_free": True,
+            },
         )
-        position[0] = sampled_position
-        valid_mask[0] = sampled_valid
-
-        valid_indices = np.flatnonzero(sampled_valid)
-        for idx in valid_indices:
-            if idx + 1 in valid_indices:
-                delta = sampled_position[idx + 1] - sampled_position[idx]
-            elif idx - 1 in valid_indices:
-                delta = sampled_position[idx] - sampled_position[idx - 1]
-            else:
-                delta = np.array([math.cos(ego_future_heading[0]), math.sin(ego_future_heading[0])])
-            vector[0, idx] = delta
-            orientation[0, idx] = math.atan2(delta[1], delta[0])
-
-        linestring_cum = _cumulative_lengths(ego_future_xy)
-        for proj_idx in range(8):
-            future_idx = HIST_STEPS + proj_idx * 10
-            if future_idx >= len(ego_future_xy):
-                break
-            point = ego_future_xy[future_idx]
-            nearest = int(np.argmin(np.linalg.norm(ego_future_xy - point[None, :], axis=1)))
-            future_projection[0, proj_idx, 0] = float(linestring_cum[nearest])
-            future_projection[0, proj_idx, 1] = 0.0
-
-        return {
-            "position": position,
-            "vector": vector,
-            "orientation": orientation,
-            "valid_mask": valid_mask,
-            "future_projection": future_projection,
-        }
 
     def _build_map_features_global(
         self,
@@ -361,8 +435,10 @@ class ApolloPlutoFeatureAdapter:
         polygon_has_speed_limit = np.zeros((total_polygons,), dtype=bool)
         polygon_speed_limit = np.zeros((total_polygons,), dtype=np.float64)
         polygon_road_block_id = np.zeros((total_polygons,), dtype=np.int32)
-
-        ref_valid_points = reference_line["position"][0][reference_line["valid_mask"][0]]
+        ref_lines = [
+            reference_line["position"][idx][reference_line["valid_mask"][idx]]
+            for idx in range(reference_line["position"].shape[0])
+        ]
         slot = 0
 
         for _, lane in lane_candidates[:MAX_LANES]:
@@ -391,9 +467,9 @@ class ApolloPlutoFeatureAdapter:
             polygon_position[slot] = centerline[0]
             polygon_orientation[slot] = point_orientation[slot, 0, 0]
             polygon_type[slot] = self._infer_lane_polygon_type(lane)
-            polygon_on_route[slot] = self._polyline_is_on_route(
-                centerline[:-1],
-                ref_valid_points,
+            polygon_on_route[slot] = any(
+                self._polyline_is_on_route(centerline[:-1], ref_valid_points)
+                for ref_valid_points in ref_lines
             )
             speed_limit = float(lane.get("speed_limit") or 0.0)
             polygon_has_speed_limit[slot] = speed_limit > 0
@@ -478,3 +554,272 @@ class ApolloPlutoFeatureAdapter:
             return int(value)
         digits = "".join(ch for ch in str(value) if ch.isdigit())
         return int(digits) if digits else 0
+
+    @staticmethod
+    def _load_route_payload(
+        parsed_path: Path,
+        t0_index: int,
+        dataset: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        route_path = parsed_path / "route.json"
+        if not route_path.exists():
+            raise FileNotFoundError(
+                f"Missing {route_path}; parse route extraction before inference."
+            )
+        payload = json.loads(route_path.read_text())
+        route_t0_index = payload.get("t0_index")
+        if route_t0_index is not None and int(route_t0_index) != int(t0_index):
+            sample_ts = dataset["sample_ts_sec"]
+            raise ValueError(
+                "route.json t0 does not match current inference t0. "
+                f"route_t0_index={route_t0_index}, infer_t0_index={t0_index}, "
+                f"route_t0_sec={payload.get('t0_timestamp_ns', 0) / 1e9:.3f}, "
+                f"infer_t0_sec={sample_ts[t0_index]:.3f}"
+            )
+        return payload
+
+    @staticmethod
+    def _route_roadblocks_from_lane_ids(
+        route_lane_ids: List[str],
+        map_graph: dict,
+    ) -> List[str]:
+        lane_to_roadblock = map_graph.get("lane_to_roadblock", {})
+        ordered: List[str] = []
+        seen = set()
+        for lane_id in route_lane_ids:
+            roadblock_id = lane_to_roadblock.get(lane_id)
+            if roadblock_id and roadblock_id not in seen:
+                ordered.append(str(roadblock_id))
+                seen.add(str(roadblock_id))
+        return ordered
+
+    def _get_candidate_starting_lanes(
+        self,
+        ego_center_xy: np.ndarray,
+        ego_rear_axle_xy: np.ndarray,
+        ego_heading: float,
+        map_graph: dict,
+        route_roadblocks: List[str],
+    ) -> List[str]:
+        lane_to_roadblock = map_graph.get("lane_to_roadblock", {})
+        candidates: List[dict] = []
+        for lane in map_graph.get("lanes", []):
+            centerline = np.asarray(lane["central"], dtype=np.float64)
+            if len(centerline) < 2:
+                continue
+            left = np.asarray(lane["left"], dtype=np.float64)[:, :2]
+            right = np.asarray(lane["right"], dtype=np.float64)[:, :2]
+            lane_polygon = np.vstack([left, right[::-1]])
+            if len(lane_polygon) < 3:
+                continue
+            if Polygon(lane_polygon).distance(Point(*ego_center_xy)) > 3.1:
+                continue
+            if str(lane_to_roadblock.get(lane["id"], "")) not in route_roadblocks:
+                continue
+            if float(lane.get("length") or 0.0) <= 2.0:
+                continue
+            if (
+                self._get_lane_angle_error(centerline, ego_rear_axle_xy, ego_heading)
+                >= math.pi / 2.0
+            ):
+                continue
+            candidates.append(lane)
+        return [str(lane["id"]) for lane in candidates]
+
+    def _find_all_candidate_routes(
+        self,
+        ego_global_xy: np.ndarray,
+        start_lane_id: str,
+        lane_lookup: Dict[str, dict],
+        route_roadblocks: List[str],
+        max_length: float,
+        max_depth: int,
+    ) -> List[np.ndarray]:
+        candidate_routes: List[List[str]] = []
+        start_lane = lane_lookup[start_lane_id]
+        start_centerline = np.asarray(start_lane["central"], dtype=np.float64)
+        start_progress = self._project_progress_along_polyline(ego_global_xy, start_centerline[:, :2])
+        init_offset = -start_progress
+        route_roadblock_set = set(route_roadblocks)
+        lane_to_roadblock = {
+            lane_id: f"{lane.get('road_id')}#{lane.get('section_id')}"
+            for lane_id, lane in lane_lookup.items()
+        }
+
+        def dfs(cur_lane_id: str, visited: List[str], length_so_far: float) -> None:
+            visited.append(cur_lane_id)
+            cur_lane = lane_lookup[cur_lane_id]
+            new_length = length_so_far + float(cur_lane.get("length") or 0.0)
+            in_route_successors = [
+                str(next_lane_id)
+                for next_lane_id in cur_lane.get("successor_ids", [])
+                if str(lane_to_roadblock.get(str(next_lane_id), "")) in route_roadblock_set
+                and str(next_lane_id) in lane_lookup
+            ]
+            if (
+                len(in_route_successors) == 0
+                or len(visited) == max_depth
+                or new_length > max_length
+            ):
+                candidate_routes.append(list(visited))
+                return
+            for next_lane_id in in_route_successors:
+                dfs(next_lane_id, visited.copy(), new_length)
+
+        dfs(start_lane_id, [], init_offset)
+
+        candidate_paths: List[np.ndarray] = []
+        for lane_ids in candidate_routes:
+            discrete_path_parts = [
+                self._lane_centerline_with_heading(lane_lookup[lane_id])
+                for lane_id in lane_ids
+            ]
+            candidate_paths.append(self._concat_paths(discrete_path_parts))
+        return candidate_paths
+
+    def _trim_path_from_ego(
+        self,
+        ego_global_xy: np.ndarray,
+        path_xyz_heading: np.ndarray,
+        length: float,
+    ) -> Tuple[np.ndarray, float]:
+        if len(path_xyz_heading) == 0:
+            return np.zeros((0, 3), dtype=np.float64), 0.0
+        path_xy = path_xyz_heading[:, :2]
+        cumulative = _cumulative_lengths(path_xy)
+        start_progress = float(cumulative[0])
+        end_progress = float(cumulative[-1])
+        cur_progress = self._project_progress_along_polyline(ego_global_xy, path_xy)
+        cut_start = max(start_progress, min(cur_progress, end_progress))
+        cur_end = min(cur_progress + length, end_progress)
+        path_length = max(0.0, cur_end - cut_start)
+        if path_length <= 1e-6:
+            return np.zeros((0, 3), dtype=np.float64), 0.0
+
+        targets = np.arange(cut_start, cur_end + 1e-6, 0.25, dtype=np.float64)
+        if targets[-1] < cur_end - 1e-6:
+            targets = np.append(targets, cur_end)
+        trimmed = np.zeros((len(targets), 3), dtype=np.float64)
+        trimmed[:, :2] = self._sample_polyline_at_progress(path_xy, cumulative, targets)
+        trimmed[:, 2] = self._sample_heading_at_progress(path_xyz_heading[:, 2], cumulative, targets)
+        return trimmed, path_length
+
+    @staticmethod
+    def _deduplicate_reference_paths(paths: List[np.ndarray]) -> List[np.ndarray]:
+        remove_index = set()
+        for i in range(len(paths)):
+            if i in remove_index:
+                continue
+            for j in range(i + 1, len(paths)):
+                if j in remove_index:
+                    continue
+                min_len = min(len(paths[i]), len(paths[j]))
+                if min_len == 0:
+                    continue
+                diff = np.abs(paths[i][:min_len, :2] - paths[j][:min_len, :2]).sum(-1)
+                if float(np.max(diff)) < 0.5:
+                    remove_index.add(j)
+        return [paths[i] for i in range(len(paths)) if i not in remove_index]
+
+    @staticmethod
+    def _lane_centerline_with_heading(lane: dict) -> np.ndarray:
+        centerline = np.asarray(lane["central"], dtype=np.float64)
+        headings = np.zeros((len(centerline),), dtype=np.float64)
+        if len(centerline) >= 2:
+            deltas = np.diff(centerline[:, :2], axis=0)
+            headings[:-1] = np.arctan2(deltas[:, 1], deltas[:, 0])
+            headings[-1] = headings[-2]
+        return np.column_stack([centerline[:, :2], headings])
+
+    @staticmethod
+    def _concat_paths(path_parts: List[np.ndarray]) -> np.ndarray:
+        if not path_parts:
+            return np.zeros((0, 3), dtype=np.float64)
+        out = [path_parts[0]]
+        for part in path_parts[1:]:
+            if len(part) == 0:
+                continue
+            if len(out[-1]) and np.allclose(out[-1][-1, :2], part[0, :2]):
+                out.append(part[1:])
+            else:
+                out.append(part)
+        return np.concatenate(out, axis=0)
+
+    @staticmethod
+    def _get_lane_angle_error(
+        centerline_xyz: np.ndarray,
+        ego_global_xy: np.ndarray,
+        ego_heading: float,
+    ) -> float:
+        subsample = centerline_xyz[::4]
+        if len(subsample) < 2:
+            subsample = centerline_xyz
+        if len(subsample) == 0:
+            return math.inf
+        if len(subsample) == 1:
+            closest_heading = 0.0
+        else:
+            deltas = np.diff(subsample[:, :2], axis=0)
+            headings = np.arctan2(deltas[:, 1], deltas[:, 0])
+            headings = np.append(headings, headings[-1])
+            distances = np.linalg.norm(subsample[:, :2] - ego_global_xy[None, :], axis=1)
+            closest_heading = float(headings[int(np.argmin(distances))])
+        return abs(_wrap_angle(closest_heading - ego_heading))
+
+    @staticmethod
+    def _project_progress_along_polyline(point_xy: np.ndarray, polyline_xy: np.ndarray) -> float:
+        if len(polyline_xy) < 2:
+            return 0.0
+        cumulative = _cumulative_lengths(polyline_xy)
+        best_progress = 0.0
+        best_distance = float("inf")
+        for idx in range(len(polyline_xy) - 1):
+            p0 = polyline_xy[idx]
+            p1 = polyline_xy[idx + 1]
+            segment = p1 - p0
+            seg_len_sq = float(np.dot(segment, segment))
+            if seg_len_sq <= 1e-9:
+                continue
+            t = float(np.dot(point_xy - p0, segment) / seg_len_sq)
+            t = max(0.0, min(1.0, t))
+            proj = p0 + t * segment
+            distance = float(np.linalg.norm(point_xy - proj))
+            if distance < best_distance:
+                best_distance = distance
+                best_progress = float(cumulative[idx] + t * math.sqrt(seg_len_sq))
+        return best_progress
+
+    @staticmethod
+    def _sample_polyline_at_progress(
+        polyline_xy: np.ndarray,
+        cumulative: np.ndarray,
+        targets: np.ndarray,
+    ) -> np.ndarray:
+        out = np.zeros((len(targets), 2), dtype=np.float64)
+        seg_idx = 0
+        for idx, target in enumerate(targets):
+            while seg_idx + 1 < len(cumulative) and cumulative[seg_idx + 1] < target:
+                seg_idx += 1
+            if seg_idx + 1 >= len(cumulative):
+                out[idx] = polyline_xy[-1]
+                continue
+            span = cumulative[seg_idx + 1] - cumulative[seg_idx]
+            if span <= 1e-9:
+                out[idx] = polyline_xy[seg_idx]
+                continue
+            ratio = (target - cumulative[seg_idx]) / span
+            out[idx] = polyline_xy[seg_idx] * (1.0 - ratio) + polyline_xy[seg_idx + 1] * ratio
+        return out
+
+    @staticmethod
+    def _sample_heading_at_progress(
+        headings: np.ndarray,
+        cumulative: np.ndarray,
+        targets: np.ndarray,
+    ) -> np.ndarray:
+        out = np.zeros((len(targets),), dtype=np.float64)
+        for idx, target in enumerate(targets):
+            pos = int(np.searchsorted(cumulative, target, side="right") - 1)
+            pos = max(0, min(pos, len(headings) - 1))
+            out[idx] = headings[pos]
+        return out

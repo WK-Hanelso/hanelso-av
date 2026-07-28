@@ -1,8 +1,10 @@
 import uuid
 from bisect import bisect_left
 from collections import defaultdict
+import json
+import math
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from cyber_record.record import Record
 
@@ -25,6 +27,7 @@ POSE_TOPIC = "/apollo/localization/pose"
 CHASSIS_TOPIC = "/apollo/canbus/chassis"
 IMU_TOPIC = "/apollo/sensor/gnss/imu"
 OBSTACLES_TOPIC = "/apollo/perception/obstacles"
+ROUTING_TOPICS = {"/apollo/routing_response", "/apollo/routing_response_history"}
 
 APOLLO_CATEGORY_MAP = {
     3: "pedestrian",
@@ -105,6 +108,125 @@ def _derive_vehicle_and_date(record_path: str) -> Tuple[str, str]:
     return vehicle, date_captured
 
 
+def _extract_route_sequence(routing_msg) -> List[str]:
+    sequence: List[str] = []
+    for road in getattr(routing_msg, "road", []):
+        for passage in getattr(road, "passage", []):
+            for segment in getattr(passage, "segment", []):
+                lane_id = getattr(segment, "id", "")
+                if lane_id:
+                    sequence.append(str(lane_id))
+    return sequence
+
+
+def _extract_destination_xy(routing_msg) -> Optional[List[float]]:
+    routing_request = getattr(routing_msg, "routing_request", None)
+    if routing_request is None:
+        return None
+    waypoints = getattr(routing_request, "waypoint", [])
+    if not waypoints:
+        return None
+    pose = getattr(waypoints[-1], "pose", None)
+    if pose is None:
+        return None
+    return [float(pose.x), float(pose.y)]
+
+
+def _polyline_length(points_xy: List[List[float]]) -> float:
+    if len(points_xy) < 2:
+        return 0.0
+    total = 0.0
+    for p0, p1 in zip(points_xy, points_xy[1:]):
+        total += math.dist(p0, p1)
+    return total
+
+
+def _select_default_t0_index(
+    sample_timestamps: List[int],
+    ego_positions_xy: List[List[float]],
+    ref_steps: int = 120,
+    ref_spacing: float = 1.0,
+    hist_steps: int = 21,
+) -> Tuple[int, str]:
+    if len(sample_timestamps) < hist_steps:
+        raise ValueError(
+            f"Need at least {hist_steps} parsed samples to select default t0, "
+            f"got {len(sample_timestamps)}."
+        )
+    best_index = hist_steps - 1
+    for index in range(hist_steps - 1, len(sample_timestamps)):
+        remaining = _polyline_length(ego_positions_xy[index:])
+        if remaining >= ref_steps * ref_spacing - 1e-3:
+            return index, "default_full_reference"
+        best_index = index
+    return best_index, "default_partial_reference"
+
+
+def _write_route_payload(
+    out_dir: str,
+    routing_events: List[Dict[str, object]],
+    t0_timestamp_ns: int,
+    t0_index: int,
+    t0_reason: str,
+) -> None:
+    route_path = Path(out_dir) / "route.json"
+    if not routing_events:
+        payload = {
+            "route_lane_ids": [],
+            "destination_xy": None,
+            "t0_timestamp_ns": int(t0_timestamp_ns),
+            "t0_index": int(t0_index),
+            "t0_reason": t0_reason,
+            "selected_event_timestamp_ns": None,
+            "selected_event_topic": None,
+            "reroute_events": [],
+            "all_sequences": [],
+        }
+        route_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
+        return
+
+    ordered = sorted(routing_events, key=lambda item: int(item["timestamp_ns"]))
+    unique_sequences: List[Dict[str, object]] = []
+    reroute_events: List[Dict[str, object]] = []
+    last_sequence: Optional[Tuple[str, ...]] = None
+    for event in ordered:
+        sequence_tuple = tuple(event["lane_ids"])
+        current = {
+            "topic": str(event["topic"]),
+            "timestamp_ns": int(event["timestamp_ns"]),
+            "lane_ids": list(sequence_tuple),
+            "destination_xy": event["destination_xy"],
+        }
+        if sequence_tuple != last_sequence:
+            unique_sequences.append(current)
+            if last_sequence is not None:
+                reroute_events.append(current)
+            last_sequence = sequence_tuple
+
+    eligible = [
+        event for event in ordered if int(event["timestamp_ns"]) <= int(t0_timestamp_ns)
+    ]
+    preferred = [
+        event for event in eligible if str(event["topic"]) == "/apollo/routing_response"
+    ]
+    selected = preferred[-1] if preferred else (eligible[-1] if eligible else None)
+    if selected is None:
+        selected = ordered[0]
+
+    payload = {
+        "route_lane_ids": list(selected["lane_ids"]),
+        "destination_xy": selected["destination_xy"],
+        "t0_timestamp_ns": int(t0_timestamp_ns),
+        "t0_index": int(t0_index),
+        "t0_reason": t0_reason,
+        "selected_event_timestamp_ns": int(selected["timestamp_ns"]),
+        "selected_event_topic": str(selected["topic"]),
+        "reroute_events": reroute_events,
+        "all_sequences": unique_sequences,
+    }
+    route_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
+
+
 class ApolloRecordParser(SourceParser):
     def parse(
         self,
@@ -118,6 +240,7 @@ class ApolloRecordParser(SourceParser):
         chassis_rows: List[Tuple[int, float, float]] = []
         imu_rows: List[Tuple[int, List[float], List[float]]] = []
         obstacle_frames: List[Tuple[int, List[Dict[str, object]]]] = []
+        routing_events: List[Dict[str, object]] = []
 
         for topic, msg, timestamp_ns in Record(record_path).read_messages():
             if topic == POSE_TOPIC:
@@ -153,6 +276,17 @@ class ApolloRecordParser(SourceParser):
                         [_extract_obstacle(obstacle) for obstacle in msg.perception_obstacle],
                     )
                 )
+            elif topic in ROUTING_TOPICS:
+                lane_ids = _extract_route_sequence(msg)
+                if lane_ids:
+                    routing_events.append(
+                        {
+                            "topic": topic,
+                            "timestamp_ns": int(timestamp_ns),
+                            "lane_ids": lane_ids,
+                            "destination_xy": _extract_destination_xy(msg),
+                        }
+                    )
 
         missing_topics: List[str] = []
         if not pose_timestamps:
@@ -328,6 +462,15 @@ class ApolloRecordParser(SourceParser):
             "language": {"frame_text": [], "object_text": []},
         }
         write_tables(out_dir, tables)
+        ego_positions_xy = [row.translation[:2] for row in ego_poses]
+        t0_index, t0_reason = _select_default_t0_index(keyframe_timestamps, ego_positions_xy)
+        _write_route_payload(
+            out_dir=out_dir,
+            routing_events=routing_events,
+            t0_timestamp_ns=keyframe_timestamps[t0_index],
+            t0_index=t0_index,
+            t0_reason=t0_reason,
+        )
         return {
             "clip_id": clip_id,
             "n_samples": len(samples),

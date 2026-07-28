@@ -66,9 +66,18 @@ def build_render(
         ax.plot(right[:, 0], right[:, 1], color="#e5e7eb", linewidth=0.8, alpha=0.5)
 
     ref = normalized_data["reference_line"]
-    if ref["valid_mask"].any():
-        ref_points = ref["position"][0][ref["valid_mask"][0]]
-        ax.plot(ref_points[:, 0], ref_points[:, 1], color="#2563eb", linewidth=2.0, alpha=0.9)
+    ref_colors = ["#2563eb", "#0f766e", "#f59e0b", "#dc2626", "#7c3aed", "#0891b2"]
+    for ref_idx in range(ref["position"].shape[0]):
+        if not ref["valid_mask"][ref_idx].any():
+            continue
+        ref_points = ref["position"][ref_idx][ref["valid_mask"][ref_idx]]
+        ax.plot(
+            ref_points[:, 0],
+            ref_points[:, 1],
+            color=ref_colors[ref_idx % len(ref_colors)],
+            linewidth=2.0,
+            alpha=0.9,
+        )
 
     agents = normalized_data["agent"]
     hist = agents["position"][:, :21]
@@ -140,10 +149,16 @@ def run_checks(normalized_data: Dict[str, Any], output: Dict[str, Any]) -> Dict[
     start_norm = float(np.linalg.norm(traj[0, :2]))
 
     ref = normalized_data["reference_line"]
-    ref_points = ref["position"][0][ref["valid_mask"][0]]
-    if len(ref_points) > 0:
-        distances = np.linalg.norm(traj[:, None, :2] - ref_points[None, :, :2], axis=2)
-        min_ref_distance = float(distances.min(axis=1).mean())
+    all_ref_points = [
+        ref["position"][idx][ref["valid_mask"][idx]]
+        for idx in range(ref["position"].shape[0])
+        if ref["valid_mask"][idx].any()
+    ]
+    if all_ref_points:
+        min_ref_distance = min(
+            float(np.linalg.norm(traj[:, None, :2] - ref_points[None, :, :2], axis=2).min(axis=1).mean())
+            for ref_points in all_ref_points
+        )
     else:
         min_ref_distance = float("inf")
 
@@ -160,6 +175,40 @@ def run_checks(normalized_data: Dict[str, Any], output: Dict[str, Any]) -> Dict[
             if np.isfinite(min_ref_distance) and min_ref_distance < 8.0
             else "trajectory departs materially from reference or reference is unavailable"
         ),
+        "reference_line_count": int(ref["position"].shape[0]),
+    }
+
+
+def compare_decoders(
+    feature: Any,
+    args: argparse.Namespace,
+) -> Dict[str, Any]:
+    policy_cls = get_policy(args.policy)
+    original_policy = policy_cls(
+        config_path=args.config_path,
+        checkpoint_path=args.checkpoint_path,
+        pluto_root=args.pluto_root,
+        use_v3_planning_decoder=False,
+    )
+    v3_policy = policy_cls(
+        config_path=args.config_path,
+        checkpoint_path=args.checkpoint_path,
+        pluto_root=args.pluto_root,
+        use_v3_planning_decoder=True,
+    )
+    with torch.inference_mode():
+        original_output = original_policy.infer(feature)["raw_output"]
+        v3_output = v3_policy.infer(feature)["raw_output"]
+
+    original_traj = original_output["output_trajectory"].detach().cpu().numpy()
+    v3_traj = v3_output["output_trajectory"].detach().cpu().numpy()
+    abs_diff = np.abs(original_traj - v3_traj)
+    return {
+        "original_decoder": original_policy.load_report["decoder_swap"]["decoder"],
+        "v3_decoder": v3_policy.load_report["decoder_swap"]["decoder"],
+        "outputs_differ": bool(not np.allclose(original_traj, v3_traj, atol=1e-6)),
+        "max_abs_diff": float(abs_diff.max()),
+        "mean_abs_diff": float(abs_diff.mean()),
     }
 
 
@@ -212,6 +261,7 @@ def main() -> int:
 
     output_summary = summarize_output(output["raw_output"])
     checks = run_checks(build_result.normalized_numpy_data, output["raw_output"])
+    decoder_comparison = compare_decoders(build_result.feature, args)
     report = {
         "clip_id": config["clip_id"],
         "parsed_dir": str(parsed_dir),
@@ -223,6 +273,7 @@ def main() -> int:
         "adapter_context": build_result.context,
         "output_summary": output_summary,
         "checks": checks,
+        "decoder_comparison": decoder_comparison,
         "artifacts": {
             "outputs_npz": str((out_dir / "outputs.npz").resolve()),
             "infer_report": str((out_dir / "infer_report.txt").resolve()),
