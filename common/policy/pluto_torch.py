@@ -16,10 +16,12 @@ class PlutoTorchPolicy(Policy):
         config_path: str,
         checkpoint_path: str,
         pluto_root: str,
+        use_v3_planning_decoder: bool = True,
     ) -> None:
         self.config_path = Path(config_path)
         self.checkpoint_path = Path(checkpoint_path)
         self.pluto_root = Path(pluto_root)
+        self.use_v3_planning_decoder = use_v3_planning_decoder
         self.model, self.model_kwargs, self.load_report = self._load_model()
 
     def _load_model(self):
@@ -27,6 +29,7 @@ class PlutoTorchPolicy(Policy):
             sys.path.insert(0, str(self.pluto_root))
 
         from src.models.pluto.pluto_model import PlanningModel
+        from .v3_planning_decoder import PlanningDecoder as V3PlanningDecoder
 
         with self.config_path.open() as f:
             config = yaml.safe_load(f)
@@ -60,8 +63,38 @@ class PlutoTorchPolicy(Policy):
             )
         model.load_state_dict(state_dict, strict=True)
 
+        decoder_name = "original"
+        decoder_swap_report = {
+            "enabled": bool(self.use_v3_planning_decoder),
+            "decoder": decoder_name,
+        }
+        if self.use_v3_planning_decoder:
+            v3_decoder = V3PlanningDecoder(
+                num_mode=kwargs["num_modes"],
+                decoder_depth=kwargs["decoder_depth"],
+                dim=kwargs["dim"],
+                num_heads=kwargs["num_heads"],
+                mlp_ratio=4,
+                dropout=kwargs["dropout"],
+                future_steps=kwargs["future_steps"],
+                cat_x=kwargs.get("cat_x", False),
+            )
+            swap_missing, swap_unexpected = v3_decoder.load_state_dict(
+                model.planning_decoder.state_dict(), strict=True
+            )
+            model.planning_decoder = v3_decoder
+            decoder_name = "v3_fixed"
+            decoder_swap_report = {
+                "enabled": True,
+                "decoder": decoder_name,
+                "load_state_dict_missing_keys": list(swap_missing),
+                "load_state_dict_unexpected_keys": list(swap_unexpected),
+                "strict_match": not swap_missing and not swap_unexpected,
+            }
+
         model.eval()
         model.cpu()
+        report["decoder_swap"] = decoder_swap_report
         return model, kwargs, report
 
     @torch.inference_mode()

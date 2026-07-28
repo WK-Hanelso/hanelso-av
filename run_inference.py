@@ -38,6 +38,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--checkpoint-path", default="data/model/v3_pluto.ckpt")
     parser.add_argument("--pluto-root", default="/home/hanelso/hanelso/pluto_onnx")
     parser.add_argument("--out-root", default="work/inference")
+    parser.add_argument(
+        "--use-v3-planning-decoder",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
     return parser.parse_args()
 
 
@@ -186,6 +191,7 @@ def main() -> int:
         config_path=args.config_path,
         checkpoint_path=args.checkpoint_path,
         pluto_root=args.pluto_root,
+        use_v3_planning_decoder=args.use_v3_planning_decoder,
     )
     with torch.inference_mode():
         output = policy.infer(build_result.feature)
@@ -211,6 +217,7 @@ def main() -> int:
         "parsed_dir": str(parsed_dir),
         "map_path": str(Path(args.map_path).resolve()),
         "policy": args.policy,
+        "decoder": policy.load_report["decoder_swap"]["decoder"],
         "model_kwargs": policy.model_kwargs,
         "model_load_report": policy.load_report,
         "adapter_context": build_result.context,
