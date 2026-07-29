@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 from scipy.special import softmax
 
-from planning.pluto_paths import ensure_pluto_on_path
+from planning.models.pluto.paths import ensure_pluto_on_path
 
 
 class PlutoPostProcessor:
@@ -365,3 +365,8 @@ class PlutoPostProcessor:
             ],
             axis=0,
         )
+
+
+from planning.interface import register_postprocessor
+
+register_postprocessor("pluto", PlutoPostProcessor)

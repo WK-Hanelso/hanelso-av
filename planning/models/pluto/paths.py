@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 from typing import Optional, Union
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_PLUTO_ROOT = REPO_ROOT / "third_party" / "pluto"
 
 

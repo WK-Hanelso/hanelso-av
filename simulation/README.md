@@ -13,7 +13,7 @@ sim은 **오프라인 검증 경로**라 CPU(`swm-base` 이미지)로 돈다 —
 | `drivers/` | `EgoDriver` ABC + registry — `"log_replay"`(open_loop: ego=로그 GT) / `"model_driven"`(closed_loop: ego=모델 운전, 원본 `ForwardSimulator` 전파). |
 | `configs/` | 모듈 config: `closed_loop_nuplan.py`, `open_loop_matplotlib.py`(`_base_` 상속) — mode/renderer/steps/stride/fps 등. |
 | `sim_utils.py` | 지오메트리·로그 agent fetch·ego dynamics·mp4 합성 공용 헬퍼. |
-| `render_sim.py` | **조립 전용** 드라이버. root config 하나 + CLI override. |
+| `render_sim.py` | **조립 전용** 드라이버 — concrete 모델 import 0 (`planning.interface.load_model` 동적 로딩, C-SWM-023). root config 하나 + CLI override. |
 
 ## 실행
 
@@ -45,7 +45,7 @@ python3 simulation/render_sim.py configs/e100bt25.py --mode closed_loop --render
 5. 렌더 + 지표 기록(스텝 변위, 시간/progress 기준 로그 대비 발산, drivable 여부,
    shapely oriented-box 충돌, emergency brake).
 
-## 어댑터 sim 주입 계약 (`planning/input/pluto_feature_adapter.py`)
+## 어댑터 sim 주입 계약 (`planning/models/pluto/dataloader.py`)
 
 - `prepare_clip(parsed_dir, map_graph, config)` — 프레임 불변 요소(파싱 테이블, route.json,
   ApolloMap) 1회 로드/캐시. route t0 검사는 클립 단위 재사용을 위해 sim 경로에서 생략.

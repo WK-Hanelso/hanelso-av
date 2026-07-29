@@ -4,9 +4,9 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Sequence, Tuple
 
-from common.io.base import MapParser
-from common.io.registry import register_map_parser
-from common.io.schema import MapGraph, MapLane, MapRoadBlock, MapSignal, write_json
+from data_devkit.parsers.base import MapParser
+from data_devkit.parsers.registry import register_map_parser
+from data_devkit.parsers.schema import MapGraph, MapLane, MapRoadBlock, MapSignal, write_json
 
 PROTO_ROOT = Path(__file__).resolve().parent / "proto"
 if str(PROTO_ROOT) not in sys.path:

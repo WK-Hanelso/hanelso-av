@@ -26,9 +26,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from planning.input.pluto import DT, HIST_STEPS
-from planning.policy.pluto_postprocess import PlutoPostProcessor
-from planning.pluto_paths import ensure_pluto_on_path
+from planning.models.pluto.input_builder import DT, HIST_STEPS
+from planning.models.pluto.postprocess import PlutoPostProcessor
+from planning.models.pluto.paths import ensure_pluto_on_path
 from .base import Renderer, register_renderer
 
 

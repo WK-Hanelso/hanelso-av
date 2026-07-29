@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Dict
 
-from common.io.config import ParseConfig
+from data_devkit.parsers.config import ParseConfig
 
 
 class SourceParser(ABC):

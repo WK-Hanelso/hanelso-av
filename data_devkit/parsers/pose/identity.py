@@ -1,5 +1,5 @@
-from common.io.base import EgoPoseProvider
-from common.io.registry import register_pose
+from data_devkit.parsers.base import EgoPoseProvider
+from data_devkit.parsers.registry import register_pose
 
 
 class IdentityPoseProvider(EgoPoseProvider):

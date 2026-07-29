@@ -2,8 +2,8 @@ import argparse
 from pathlib import Path
 from typing import Optional, Sequence
 
-import common.io.apollo  # noqa: F401
-from common.io.registry import get_map_parser
+import data_devkit.parsers.apollo  # noqa: F401
+from data_devkit.parsers.registry import get_map_parser
 
 
 def _build_parser() -> argparse.ArgumentParser:

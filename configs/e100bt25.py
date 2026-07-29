@@ -8,10 +8,14 @@
 config = dict(
     clip_id="E100BT-25_20260716151711_00006",
     record="data/bag/E100BT-25/20260716151711.record.00006",
-    source="apollo_record",  # common/io parser registry key
-    pose="apollo_record",    # common/io pose provider registry key
+    source="apollo_record",  # data_devkit/parsers parser registry key
+    pose="apollo_record",    # data_devkit/parsers pose provider registry key
     map_name="AYG",
     map_path="work/maps/AYG/map_graph.json",
+    # 데이터 provenance 축 (data_devkit/contract.py DATA_AXES):
+    # 같은 아티팩트의 복수 생산자 중 무엇을 쓸지. 현재 유효 값은
+    # agents="apollo_gt", prediction=None 뿐 (bevfusion/apollo는 예약).
+    data=dict(agents="apollo_gt", prediction=None),
     # feature ego-shape 키(학습 분포와 일치하는 pacifica 제원 사용).
     # calibration 제원의 코드 배선(rear-axle/STEER_GAIN/충돌 shape)은 다음 태스크.
     vehicle="pacifica",

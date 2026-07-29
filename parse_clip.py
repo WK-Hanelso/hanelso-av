@@ -8,11 +8,11 @@ root config의 record/source/pose(+선택 keyframe·keyframe_hz)를 읽어 파�
 from pathlib import Path
 from typing import List, Optional
 
-import common.io.apollo  # noqa: F401
-import common.io.pose  # noqa: F401
+import data_devkit.parsers.apollo  # noqa: F401
+import data_devkit.parsers.pose  # noqa: F401
 from common.config import load_config_file, resolve_repo_path
-from common.io.config import ParseConfig
-from common.io.registry import get_parser, get_pose_provider
+from data_devkit.parsers.config import ParseConfig
+from data_devkit.parsers.registry import get_parser, get_pose_provider
 
 
 def _default_clip_id(record_path: str) -> str:

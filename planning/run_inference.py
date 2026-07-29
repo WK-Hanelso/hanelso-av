@@ -32,10 +32,12 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from common.config import load_config, resolve_repo_path
-import planning.input  # noqa: F401  (registers input builders / feature adapters)
-from planning.input.base import get_feature_adapter
-from planning.policy import get_policy
-import planning.policy.pluto_torch  # noqa: F401  (registers pluto_torch)
+from planning.interface import (
+    get_feature_adapter,
+    get_policy,
+    get_postprocessor,
+    load_model,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -319,6 +321,8 @@ def main() -> int:
             f"root config {args.config} has no planning module "
             "(modules.planning is None)"
         )
+    # 동적 로딩: modules.planning 이름 -> planning.models.<이름> import -> registry 등록.
+    load_model((cfg.get("modules") or {}).get("planning"))
 
     clip_id = cfg["clip_id"]
     parsed_dir = resolve_repo_path(f"work/{clip_id}/parsed")
@@ -336,6 +340,7 @@ def main() -> int:
         "clip_id": clip_id,
         "map_name": cfg["map_name"],
         "vehicle": cfg.get("vehicle", "pacifica"),
+        "data": cfg.get("data"),
     }
 
     adapter_cls = get_feature_adapter(plan_cfg["input_builder"])
@@ -362,10 +367,9 @@ def main() -> int:
     forward_latency = measure_forward_latency(policy, build_result.feature)
 
     post_result = None
-    if plan_cfg.get("postprocess", {}).get("enabled", True):
-        from planning.policy.pluto_postprocess import PlutoPostProcessor
-
-        postprocessor = PlutoPostProcessor()
+    post_cfg = plan_cfg.get("postprocess", {})
+    if post_cfg.get("enabled", True):
+        postprocessor = get_postprocessor(post_cfg["name"])()
         post_result = postprocessor.run(
             model_output=output["raw_output"],
             normalized_data=build_result.normalized_numpy_data,

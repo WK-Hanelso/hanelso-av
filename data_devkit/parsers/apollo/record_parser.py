@@ -8,10 +8,10 @@ from typing import Dict, List, Optional, Tuple
 
 from cyber_record.record import Record
 
-from common.io.base import EgoPoseProvider, SourceParser
-from common.io.config import ParseConfig
-from common.io.registry import register_parser
-from common.io.schema import (
+from data_devkit.parsers.base import EgoPoseProvider, SourceParser
+from data_devkit.parsers.config import ParseConfig
+from data_devkit.parsers.registry import register_parser
+from data_devkit.parsers.schema import (
     CategoryRow,
     EgoDynamicsRow,
     EgoPoseRow,

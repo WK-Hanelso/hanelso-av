@@ -7,6 +7,7 @@ config = dict(
     pose="apollo_record",
     map_name="SEL",
     map_path="work/maps/SEL/map_graph.json",
+    data=dict(agents="apollo_gt", prediction=None),
     vehicle="pacifica",
     modules=dict(planning="pluto", perception=None, localization=None),
     calibration="e100",

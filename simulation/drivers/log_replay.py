@@ -14,7 +14,7 @@ from typing import Any, Dict
 import numpy as np
 import torch
 
-from planning.input.pluto import HIST_STEPS
+from planning.models.pluto.input_builder import HIST_STEPS
 from simulation.sim_utils import frame_agents, local_to_global, make_mp4
 from .base import EgoDriver, register_ego_driver
 

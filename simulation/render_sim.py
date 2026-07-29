@@ -34,11 +34,12 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from common.config import load_config, resolve_repo_path
-import planning.input  # noqa: F401  (registers input builders / feature adapters)
-from planning.input.base import get_feature_adapter
-from planning.policy import get_policy
-import planning.policy.pluto_torch  # noqa: F401  (registers pluto_torch)
-from planning.policy.pluto_postprocess import PlutoPostProcessor
+from planning.interface import (
+    get_feature_adapter,
+    get_policy,
+    get_postprocessor,
+    load_model,
+)
 from simulation.drivers import MODE_TO_DRIVER, get_ego_driver
 from simulation.renderers import get_renderer
 
@@ -66,6 +67,8 @@ def main() -> int:
         raise SystemExit(f"root config {args.config} has no planning module")
     if not sim_cfg:
         raise SystemExit(f"root config {args.config} has no simulation config")
+    # 동적 로딩: modules.planning 이름 -> planning.models.<이름> import -> registry 등록.
+    load_model((cfg.get("modules") or {}).get("planning"))
     for key in ("mode", "renderer", "steps", "stride", "fps", "start_index", "view_radius"):
         cli_value = getattr(args, key)
         if cli_value is not None:
@@ -83,6 +86,7 @@ def main() -> int:
         "clip_id": clip_id,
         "map_name": cfg["map_name"],
         "vehicle": cfg.get("vehicle", "pacifica"),
+        "data": cfg.get("data"),
     }
     adapter = get_feature_adapter(plan_cfg["input_builder"])()
     clip = adapter.prepare_clip(str(parsed_dir), map_graph, config)
@@ -94,7 +98,7 @@ def main() -> int:
         use_v3_planning_decoder=plan_cfg.get("use_v3_planning_decoder", True),
         device=args.device or plan_cfg.get("device", "cpu"),
     )
-    postprocessor = PlutoPostProcessor()
+    postprocessor = get_postprocessor(plan_cfg.get("postprocess", {})["name"])()
 
     mode = sim_cfg["mode"]
     renderer_cls = get_renderer(sim_cfg["renderer"])

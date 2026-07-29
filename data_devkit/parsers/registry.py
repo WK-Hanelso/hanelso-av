@@ -1,6 +1,6 @@
 from typing import Dict, Type
 
-from common.io.base import EgoPoseProvider, MapParser, SourceParser
+from data_devkit.parsers.base import EgoPoseProvider, MapParser, SourceParser
 
 _PARSERS: Dict[str, Type[SourceParser]] = {}
 _MAP_PARSERS: Dict[str, Type[MapParser]] = {}

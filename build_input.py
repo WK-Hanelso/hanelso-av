@@ -22,8 +22,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from common.config import load_config, resolve_repo_path
-import planning.input  # noqa: F401
-from planning.input.base import get_input_builder
+from planning.interface import get_input_builder, load_model
 
 
 def _shape_str(array: np.ndarray) -> str:
@@ -293,6 +292,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     plan_cfg = cfg.get("planning")
     if plan_cfg is None:
         raise SystemExit(f"root config {args.config} has no planning module")
+    # 동적 로딩: modules.planning 이름 -> planning.models.<이름> import -> registry 등록.
+    load_model((cfg.get("modules") or {}).get("planning"))
 
     clip_id = cfg["clip_id"]
     parsed_dir = str(resolve_repo_path(f"work/{clip_id}/parsed"))

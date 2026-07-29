@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from planning.input.pluto import (
+from planning.models.pluto.input_builder import (
     CATEGORY_CODES,
     DT,
     HIST_STEPS,
@@ -54,11 +54,49 @@ class AdapterBuildResult:
 
 
 class ApolloPlutoFeatureAdapter:
+    # 데이터 계약 (C-SWM-023): 이 dataloader가 소비하는 data_devkit 아티팩트.
+    # prepare_clip()/build() 시작 시 data_devkit.contract.check로 fail-fast
+    # 검증한다 (누락 시 "무엇을 돌려야 하는지" 안내 포함 예외).
+    # 스펙 §3의 6종 + scene_log(_load_tables가 scene/log.json도 읽으므로 명시).
+    REQUIRES = [
+        "sample",
+        "ego_pose",
+        "ego_dynamics",
+        "agent_tracks",
+        "scene_log",
+        "route",
+        "map_graph",
+    ]
+
     def __init__(self, pluto_root: Optional[str] = None) -> None:
-        from planning.pluto_paths import ensure_pluto_on_path
+        from planning.models.pluto.paths import ensure_pluto_on_path
 
         self._builder = PlutoInputBuilder()
         self._pluto_root = ensure_pluto_on_path(pluto_root)
+
+    def _check_contract(self, parsed_dir: str, config: dict) -> None:
+        """data_devkit 계약 check — 경로는 parsed_dir 기준으로 해석한다.
+
+        clip 루트 = parsed_dir 부모, maps 루트 = <work 루트>/maps.  검증/데모용
+        임시 클립 사본(work/ 안 임시 디렉토리)도 같은 규약으로 검사된다.
+        """
+        from data_devkit import contract
+
+        parsed_path = Path(parsed_dir).resolve()
+        clip_root = parsed_path.parent
+        clip_id = str(config.get("clip_id") or clip_root.name)
+        report = contract.check(
+            clip_id=clip_id,
+            requires=self.REQUIRES,
+            data_cfg=config.get("data"),
+            map_name=str(config.get("map_name") or "") or None,
+            clip_dir=clip_root,
+            maps_root=clip_root.parent / "maps",
+        )
+        print(
+            f"[data_devkit.contract] check ok: clip={clip_id} "
+            f"artifacts={report['checked']} provenance={report['provenance']}"
+        )
 
     def _import_pluto_feature(self):
         from src.features.pluto_feature import PlutoFeature
@@ -77,6 +115,7 @@ class ApolloPlutoFeatureAdapter:
         config: dict,
         t0_time: float | None = None,
     ) -> AdapterBuildResult:
+        self._check_contract(parsed_dir, config)
         PlutoFeature = self._import_pluto_feature()
         parsed_path = Path(parsed_dir)
         tables = self._builder._load_tables(parsed_path)
@@ -140,6 +179,7 @@ class ApolloPlutoFeatureAdapter:
         """Loads per-clip inputs once so build_frame() can run per frame."""
         from planning.map_adapter.apollo_map import ApolloMap
 
+        self._check_contract(parsed_dir, config)
         parsed_path = Path(parsed_dir)
         tables = self._builder._load_tables(parsed_path)
         dataset = self._builder._prepare_dataset(tables, config)
@@ -982,6 +1022,6 @@ class ApolloPlutoFeatureAdapter:
         return out
 
 
-from planning.input.base import register_feature_adapter
+from planning.interface import register_feature_adapter
 
 register_feature_adapter("pluto_feature", ApolloPlutoFeatureAdapter)

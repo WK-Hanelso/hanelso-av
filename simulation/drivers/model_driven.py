@@ -19,8 +19,8 @@ from typing import Any, Dict, List
 import numpy as np
 import torch
 
-from planning.input.pluto import DT, HIST_STEPS
-from planning.pluto_paths import ensure_pluto_on_path
+from planning.models.pluto.input_builder import DT, HIST_STEPS
+from planning.models.pluto.paths import ensure_pluto_on_path
 from simulation.sim_utils import (
     PROGRESS_WINDOW,
     build_ego_state_from_array,

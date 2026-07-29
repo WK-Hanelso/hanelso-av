@@ -6,8 +6,8 @@ from typing import Any, Optional, Union
 import torch
 import yaml
 
-from planning.pluto_paths import ensure_pluto_on_path
-from .base import Policy, register_policy
+from planning.models.pluto.paths import ensure_pluto_on_path
+from planning.interface import Policy, register_policy
 
 
 def _to_cpu(obj: Any) -> Any:
