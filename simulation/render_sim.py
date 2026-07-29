@@ -85,7 +85,8 @@ def main() -> int:
     config = {
         "clip_id": clip_id,
         "map_name": cfg["map_name"],
-        "vehicle": cfg.get("vehicle", "pacifica"),
+        "feature_vehicle": plan_cfg.get("feature_vehicle", "pacifica"),
+        "calibration": cfg["calibration"],
         "data": cfg.get("data"),
     }
     adapter = get_dataloader(plan_cfg["dataloader"])()
@@ -97,7 +98,9 @@ def main() -> int:
         checkpoint_path=str(bundle / plan_cfg["checkpoint"]),
         device=args.device or plan_cfg.get("device", "cpu"),
     )
-    postprocessor = get_postprocessor(plan_cfg.get("postprocess", {})["name"])()
+    postprocessor = get_postprocessor(plan_cfg.get("postprocess", {})["name"])(
+        vehicle_parameters=clip["vehicle_parameters"]
+    )
 
     mode = sim_cfg["mode"]
     renderer_cls = get_renderer(sim_cfg["renderer"])

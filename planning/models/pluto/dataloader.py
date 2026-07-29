@@ -9,6 +9,13 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
 
+from calibration.vehicle import (
+    apply_imu_lateral_offset,
+    ego_dims as calibration_ego_dims,
+    max_tire_angle,
+    steering_pct_to_tire_angle,
+    to_vehicle_parameters,
+)
 from planning.interface import Dataloader, register_dataloader
 
 
@@ -28,13 +35,10 @@ ON_ROUTE_THRESHOLD_M = 5.0
 MAP_SELECTION_MARGIN_M = 15.0
 
 PACIFICA_DIMS = (2.297, 5.176)
-VEHICLE_DIMENSIONS = {
-    "pacifica": PACIFICA_DIMS,
-    "e100": PACIFICA_DIMS,
-    "e100bt-25": PACIFICA_DIMS,
-    "e100bt-22": PACIFICA_DIMS,
-    "u100": PACIFICA_DIMS,
-}
+FEATURE_VEHICLE_DIMENSIONS = {"pacifica": PACIFICA_DIMS}
+# C-SWM-026 sign experiment on BT-25/BT-22 kept +1 as the default:
+# BT-22 improved both reference and lane-center distances; BT-25 split.
+DEFAULT_IMU_LAT_SIGN = 1.0
 
 CATEGORY_CODES = {
     "ego": 0,
@@ -198,6 +202,9 @@ class PlutoFeedBuilder:
         return {name: _load_json(parsed_path / f"{name}.json") for name in names}
 
     def _prepare_dataset(self, tables: Dict[str, object], config: dict) -> Dict[str, object]:
+        calib = dict(config.get("calibration") or {})
+        if not calib:
+            raise ValueError("config.calibration must be resolved before Pluto dataloader use")
         samples = sorted(tables["sample"], key=lambda row: row["timestamp"])
         sample_tokens = [row["token"] for row in samples]
         sample_ts_ns = [int(row["timestamp"]) for row in samples]
@@ -213,7 +220,7 @@ class PlutoFeedBuilder:
             for row in tables["instance"]
         }
 
-        ego_positions = np.zeros((len(samples), 2), dtype=np.float64)
+        ego_positions_imu = np.zeros((len(samples), 2), dtype=np.float64)
         ego_headings = np.zeros((len(samples),), dtype=np.float64)
         ego_speed = np.zeros((len(samples),), dtype=np.float64)
         ego_accel = np.zeros((len(samples),), dtype=np.float64)
@@ -224,7 +231,7 @@ class PlutoFeedBuilder:
         for idx, sample in enumerate(samples):
             dyn = dynamics_by_sample[sample["token"]]
             pose = pose_by_token[dyn["ego_pose_token"]]
-            ego_positions[idx] = np.array(pose["translation"][:2], dtype=np.float64)
+            ego_positions_imu[idx] = np.array(pose["translation"][:2], dtype=np.float64)
             ego_headings[idx] = _quat_to_yaw(pose["rotation"])
             ego_speed[idx] = float(dyn["speed_mps"])
             acc = np.array(dyn["linear_acceleration"][:2], dtype=np.float64)
@@ -281,15 +288,25 @@ class PlutoFeedBuilder:
                 "category": instance_category.get(instance_token, "unknown"),
             }
 
+        imu_sign = float(config.get("imu_lat_sign", DEFAULT_IMU_LAT_SIGN))
+        ego_positions = apply_imu_lateral_offset(
+            ego_positions_imu,
+            ego_headings,
+            float(calib.get("imu_lat_offset_m", 0.0)),
+            imu_sign,
+        )
         clip_id = str(config.get("clip_id") or tables["scene"][0]["name"])
-        vehicle_key = str(config.get("vehicle", "pacifica")).lower()
-        ego_dims = VEHICLE_DIMENSIONS.get(vehicle_key, PACIFICA_DIMS)
+        feature_vehicle = str(config.get("feature_vehicle", "pacifica")).lower()
+        feature_ego_dims = FEATURE_VEHICLE_DIMENSIONS.get(feature_vehicle, PACIFICA_DIMS)
+        physical_ego_dims = calibration_ego_dims(calib)
+        vehicle_parameters = to_vehicle_parameters(calib)
 
         return {
             "samples": samples,
             "sample_tokens": sample_tokens,
             "sample_ts_sec": sample_ts_sec,
             "ego_positions": ego_positions,
+            "ego_positions_imu": ego_positions_imu,
             "ego_headings": ego_headings,
             "ego_speed": ego_speed,
             "ego_accel": ego_accel,
@@ -299,8 +316,13 @@ class PlutoFeedBuilder:
             "ann_by_sample": ann_by_sample,
             "track_data": track_data,
             "clip_id": clip_id,
-            "ego_dims": ego_dims,
-            "vehicle_key": vehicle_key,
+            "feature_ego_dims": feature_ego_dims,
+            "physical_ego_dims": physical_ego_dims,
+            "feature_vehicle": feature_vehicle,
+            "vehicle_parameters": vehicle_parameters,
+            "max_tire_angle_rad": max_tire_angle(calib),
+            "calibration": calib,
+            "imu_lat_sign": imu_sign,
             "logfile": tables["log"][0]["logfile"],
         }
 
@@ -380,7 +402,7 @@ class PlutoFeedBuilder:
             axis=1,
         )
         agent_velocity[0] = _transform_vectors(ego_vectors_global, rot_inv)
-        agent_shape[0] = np.array(dataset["ego_dims"], dtype=np.float32)
+        agent_shape[0] = np.array(dataset["feature_ego_dims"], dtype=np.float32)
         agent_category[0] = CATEGORY_CODES["ego"]
         agent_valid_mask[0] = history_deltas <= (DT * 0.6)
 
@@ -468,6 +490,10 @@ class PlutoFeedBuilder:
             rot_inv,
         )
 
+        steering_angle = steering_pct_to_tire_angle(
+            float(dataset["ego_steering"][t0_index]),
+            dataset["calibration"],
+        )
         current_state = np.array(
             [
                 0.0,
@@ -475,7 +501,7 @@ class PlutoFeedBuilder:
                 0.0,
                 float(dataset["ego_speed"][t0_index]),
                 float(dataset["ego_accel"][t0_index]),
-                float(dataset["ego_steering"][t0_index]),
+                steering_angle,
                 float(dataset["ego_ang_vel"][t0_index]),
             ],
             dtype=np.float32,
@@ -510,8 +536,12 @@ class PlutoFeedBuilder:
         context = {
             "clip_id": dataset["clip_id"],
             "logfile": dataset["logfile"],
-            "vehicle_key": dataset["vehicle_key"],
-            "ego_dims": list(dataset["ego_dims"]),
+            "feature_vehicle": dataset["feature_vehicle"],
+            "feature_ego_dims": list(dataset["feature_ego_dims"]),
+            "physical_ego_dims": list(dataset["physical_ego_dims"]),
+            "calibration_vehicle": str(dataset["calibration"]["vehicle"]),
+            "imu_lat_sign": float(dataset["imu_lat_sign"]),
+            "max_tire_angle_rad": float(dataset["max_tire_angle_rad"]),
             "map_name": str(config.get("map_name") or ""),
             "t0_index": t0_index,
             "t0_time_sec": sample_ts_sec[t0_index],
@@ -533,7 +563,7 @@ class PlutoFeedBuilder:
                 "heading_local_rad",
                 "speed_mps",
                 "linear_accel_norm_mps2",
-                "steering_percentage",
+                "tire_steering_angle_rad",
                 "yaw_rate_rps",
             ],
             "shape_constants": {
@@ -550,7 +580,7 @@ class PlutoFeedBuilder:
                 "Map tensor shape caps are provisional placeholders pending final ONNX collation reconciliation.",
                 "on_route is a best-effort proximity test against the reference line rather than a route-lane ground truth flag.",
                 "Static objects are derived from tracked agents with t0 speed <= 0.5 m/s.",
-                "Ego box falls back to Chrysler Pacifica dimensions for all vehicles until exact per-vehicle box specs are reconciled.",
+                "Feature ego box stays pinned to the model feature_vehicle; physical ego box follows calibration.",
             ],
             "map_notes": map_notes,
             "crosswalk_notes": crosswalk_notes,
@@ -833,6 +863,8 @@ class ApolloPlutoDataloader(Dataloader):
             "dt": DT,
             "hist_steps": HIST_STEPS,
             "config": dict(config),
+            "vehicle_parameters": dataset["vehicle_parameters"],
+            "max_tire_angle_rad": dataset["max_tire_angle_rad"],
         }
 
     def build_frame(
@@ -928,7 +960,7 @@ class ApolloPlutoDataloader(Dataloader):
         agent_position[0, :HIST_STEPS] = ego_positions_hist
         agent_heading[0, :HIST_STEPS] = ego_headings_hist
         agent_velocity[0, :HIST_STEPS] = ego_vectors_global
-        agent_shape[0] = np.array(dataset["ego_dims"], dtype=np.float64)
+        agent_shape[0] = np.array(dataset["feature_ego_dims"], dtype=np.float64)
         agent_category[0] = CATEGORY_CODES["ego"]
         agent_valid_mask[0, :HIST_STEPS] = ego_hist_valid
 
@@ -1025,6 +1057,10 @@ class ApolloPlutoDataloader(Dataloader):
             reference_line=reference_line,
         )
         if ego_override is None:
+            steering_angle = steering_pct_to_tire_angle(
+                float(dataset["ego_steering"][t0_index]),
+                dataset["calibration"],
+            )
             current_state = np.array(
                 [
                     float(origin_xy[0]),
@@ -1032,7 +1068,7 @@ class ApolloPlutoDataloader(Dataloader):
                     angle,
                     float(dataset["ego_speed"][t0_index]),
                     float(dataset["ego_accel"][t0_index]),
-                    float(dataset["ego_steering"][t0_index]),
+                    steering_angle,
                     float(dataset["ego_ang_vel"][t0_index]),
                 ],
                 dtype=np.float64,
@@ -1068,8 +1104,12 @@ class ApolloPlutoDataloader(Dataloader):
         context = {
             "clip_id": dataset["clip_id"],
             "logfile": dataset["logfile"],
-            "vehicle_key": dataset["vehicle_key"],
-            "ego_dims": list(dataset["ego_dims"] or PACIFICA_DIMS),
+            "feature_vehicle": dataset["feature_vehicle"],
+            "feature_ego_dims": list(dataset["feature_ego_dims"]),
+            "physical_ego_dims": list(dataset["physical_ego_dims"]),
+            "calibration_vehicle": str(dataset["calibration"]["vehicle"]),
+            "imu_lat_sign": float(dataset["imu_lat_sign"]),
+            "max_tire_angle_rad": float(dataset["max_tire_angle_rad"]),
             "t0_index": t0_index,
             "t0_time_sec": sample_ts_sec[t0_index],
             "t0_reason": t0_reason,
@@ -1106,9 +1146,10 @@ class ApolloPlutoDataloader(Dataloader):
         """Builds a nuPlan EgoState at t0 from parsed ego pose/dynamics.
 
         The parsed Apollo localization pose is treated as the rear-axle pose
-        (consistent with the whole feature pipeline). Longitudinal acceleration
-        is a signed finite-difference of speed; the tire steering angle is a
-        kinematic estimate from yaw rate (steering_percentage is not an angle).
+        after dataloader-time IMU lateral correction. Longitudinal acceleration
+        is a signed finite-difference of speed; the tire steering angle uses
+        the measured steering percentage when available and otherwise falls
+        back to a yaw-rate-based kinematic estimate.
         """
         from nuplan.common.actor_state.ego_state import EgoState
         from nuplan.common.actor_state.state_representation import (
@@ -1116,10 +1157,6 @@ class ApolloPlutoDataloader(Dataloader):
             StateVector2D,
             TimePoint,
         )
-        from nuplan.common.actor_state.vehicle_parameters import (
-            get_pacifica_parameters,
-        )
-
         xy = dataset["ego_positions"][t0_index]
         heading = float(dataset["ego_headings"][t0_index])
         speed = float(dataset["ego_speed"][t0_index])
@@ -1140,13 +1177,19 @@ class ApolloPlutoDataloader(Dataloader):
         else:
             signed_accel = float(dataset["ego_accel"][t0_index])
 
-        vehicle_parameters = get_pacifica_parameters()
-        if speed > 0.5:
+        vehicle_parameters = dataset["vehicle_parameters"]
+        measured_pct = float(dataset["ego_steering"][t0_index])
+        if np.isfinite(measured_pct):
+            steering_angle = steering_pct_to_tire_angle(
+                measured_pct,
+                dataset["calibration"],
+            )
+        elif speed > 0.5:
             steering_angle = float(
                 np.clip(
                     math.atan(vehicle_parameters.wheel_base * yaw_rate / speed),
-                    -0.61,
-                    0.61,
+                    -dataset["max_tire_angle_rad"],
+                    dataset["max_tire_angle_rad"],
                 )
             )
         else:

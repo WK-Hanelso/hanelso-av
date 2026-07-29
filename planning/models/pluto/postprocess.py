@@ -21,6 +21,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 import numpy as np
+from nuplan.common.actor_state.vehicle_parameters import VehicleParameters
 from scipy.special import softmax
 
 from planning.interface import Postprocessor, register_postprocessor
@@ -32,6 +33,7 @@ class PlutoPostProcessor(Postprocessor):
 
     def __init__(
         self,
+        vehicle_parameters: VehicleParameters,
         candidate_max_num: int = 20,
         learning_based_score_weight: float = 0.25,
         eval_dt: float = 0.1,
@@ -45,7 +47,11 @@ class PlutoPostProcessor(Postprocessor):
         self._topk = int(candidate_max_num)
         self._learning_based_score_weight = float(learning_based_score_weight)
 
-        self._trajectory_evaluator = TrajectoryEvaluator(eval_dt, eval_num_frames)
+        self._trajectory_evaluator = TrajectoryEvaluator(
+            eval_dt,
+            eval_num_frames,
+            vehicle_parameters=vehicle_parameters,
+        )
         self._emergency_brake = EmergencyBrake()
 
     # ------------------------------------------------------------------ API

@@ -71,6 +71,7 @@ class EmergencyBrake:
         self, origin_trajectory: np.ndarray, ego_state: EgoState, soft_brake=False
     ):
         simulator = ForwardSimulator(
+            vehicle_parameters=ego_state.car_footprint.vehicle_parameters,
             dt=self._trajectory_sampling.interval_length,
             num_frames=self._trajectory_sampling.num_poses,
             estop=True,

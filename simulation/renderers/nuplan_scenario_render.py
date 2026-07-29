@@ -9,7 +9,7 @@ from nuplan.common.actor_state.ego_state import EgoState
 from nuplan.common.actor_state.state_representation import Point2D, StateSE2
 from nuplan.common.actor_state.tracked_objects import TrackedObject, TrackedObjects
 from nuplan.common.actor_state.tracked_objects_types import TrackedObjectType
-from nuplan.common.actor_state.vehicle_parameters import get_pacifica_parameters
+from nuplan.common.actor_state.vehicle_parameters import VehicleParameters
 from nuplan.common.maps.maps_datatypes import (
     SemanticMapLayer,
     TrafficLightStatusData,
@@ -41,6 +41,7 @@ TRAFFIC_LIGHT_COLOR_MAPPING = {
 class NuplanScenarioRender:
     def __init__(
         self,
+        vehicle_parameters: VehicleParameters,
         future_horizon: float = 8,
         sample_interval: float = 0.1,
         bounds=60,
@@ -52,7 +53,7 @@ class NuplanScenarioRender:
         self.future_horizon = future_horizon
         self.future_samples = int(self.future_horizon / sample_interval)
         self.sample_interval = sample_interval
-        self.ego_params = get_pacifica_parameters()
+        self.ego_params = vehicle_parameters
         self.length = self.ego_params.length
         self.width = self.ego_params.width
         self.bounds = bounds

@@ -9,7 +9,7 @@ from typing import Dict, List, Optional
 import numpy as np
 import shapely.creation
 from nuplan.common.actor_state.ego_state import EgoState
-from nuplan.common.actor_state.vehicle_parameters import get_pacifica_parameters
+from nuplan.common.actor_state.vehicle_parameters import VehicleParameters
 from nuplan.common.maps.abstract_map_objects import LaneGraphEdgeMapObject
 from nuplan.common.maps.maps_datatypes import TrafficLightStatusData
 from nuplan.planning.simulation.observation.observation_type import DetectionsTracks
@@ -51,6 +51,7 @@ class TrajectoryEvaluator:
         self,
         dt: float = 0.1,
         num_frames: int = 40,
+        vehicle_parameters: Optional[VehicleParameters] = None,
     ) -> None:
         assert dt * num_frames <= 8, "dt * num_frames should be less than 8s"
 
@@ -60,7 +61,11 @@ class TrajectoryEvaluator:
         self._route_lane_dict = None
         self._drivable_area_map: Optional[OccupancyMap] = None
         self._world = WorldFromPrediction(dt, num_frames)
-        self._forward_simulator = ForwardSimulator(dt, num_frames)
+        self._forward_simulator = ForwardSimulator(
+            vehicle_parameters=vehicle_parameters,
+            dt=dt,
+            num_frames=num_frames,
+        )
 
         self._init_ego_state: Optional[EgoState] = None
         self._ego_rollout: Optional[np.ndarray[np.float64]] = None
@@ -69,7 +74,9 @@ class TrajectoryEvaluator:
         self._ego_footprints_speed_limit: Optional[np.ndarray[np.object_]] = None
         self._ego_baseline_path: [Optional[LineString]] = None
         self._ego_progress: Optional[np.ndarray[np.float64]] = None
-        self._ego_parameters = get_pacifica_parameters()
+        if vehicle_parameters is None:
+            raise ValueError("TrajectoryEvaluator requires explicit vehicle_parameters")
+        self._ego_parameters = vehicle_parameters
         self._ego_shape = np.array(
             [self._ego_parameters.width, self._ego_parameters.length],
             dtype=np.float64,
@@ -166,7 +173,11 @@ class TrajectoryEvaluator:
         )
         N, T, _ = rollout_states.shape
         vertices = compute_agents_vertices(
-            center=ego_rear_to_center(rollout_states[..., :2], rollout_states[..., 2]),
+            center=ego_rear_to_center(
+                rollout_states[..., :2],
+                rollout_states[..., 2],
+                self._ego_parameters.rear_axle_to_center,
+            ),
             angle=rollout_states[..., 2],
             shape=self._ego_shape[None, :].repeat(N, axis=0),
         )

@@ -61,7 +61,7 @@ def compute_agents_vertices(
     return vertices
 
 
-def ego_rear_to_center(rear_xy, heading, rear_to_center=1.461):
+def ego_rear_to_center(rear_xy, heading, rear_to_center):
     direction = np.stack([np.cos(heading), np.sin(heading)], axis=-1)
     center = rear_xy + direction * rear_to_center
     return center

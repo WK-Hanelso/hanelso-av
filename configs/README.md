@@ -15,7 +15,6 @@ config = dict(
     pose="apollo_record",     # data_devkit/parsers pose provider registry key
     map_name="AYG",
     map_path="work/maps/AYG/map_graph.json",
-    vehicle="pacifica",
     modules=dict(planning="pluto", perception=None, localization=None),
     calibration="e100",
     simulation="closed_loop_nuplan",
@@ -29,6 +28,12 @@ config = dict(
 (`data_devkit/contract.py::DATA_AXES`). 현재 유효 값: `agents="apollo_gt"`(perception GT),
 `prediction=None`. `bevfusion`/`apollo`는 예약 — 지정하면 contract가 명확한 에러로 거부.
 모델 dataloader는 `REQUIRES` 아티팩트를 이 축으로 해석해 `contract.check()` fail-fast.
+
+## calibration / feature vehicle
+
+- `calibration="e100"` 같은 root 항목은 실차 물리 제원을 고른다.
+- feature ego-shape pin은 root가 아니라 모델 config
+  (`planning/configs/pluto.py::feature_vehicle`)가 소유한다.
 
 ## 사용 예
 

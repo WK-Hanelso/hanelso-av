@@ -1,6 +1,7 @@
 import numpy as np
 from nuplan.common.actor_state.ego_state import EgoState
 from nuplan.common.actor_state.state_representation import TimeDuration, TimePoint
+from nuplan.common.actor_state.vehicle_parameters import VehicleParameters
 from nuplan.planning.simulation.simulation_time_controller.simulation_iteration import (
     SimulationIteration,
 )
@@ -13,18 +14,24 @@ from ..common.enum import StateIndex, ego_state_to_state_array
 class ForwardSimulator:
     def __init__(
         self,
+        vehicle_parameters: VehicleParameters,
         dt: float = 0.1,
         num_frames: int = 40,
         estop: bool = False,
         soft_brake: bool = False,
+        max_steering_angle: float = np.pi / 3,
     ) -> None:
         self.dt = dt
         self.interval = int(dt * 10)
         self.num_frames = num_frames
-        self.motion_model = BatchKinematicBicycleModel()
+        self.motion_model = BatchKinematicBicycleModel(
+            vehicle=vehicle_parameters,
+            max_steering_angle=max_steering_angle,
+        )
         self.tracker = BatchLQRTracker(
             discretization_time=dt,
             tracking_horizon=int(1 / dt),
+            vehicle=vehicle_parameters,
             estop=estop,
             soft_brake=soft_brake,
         )

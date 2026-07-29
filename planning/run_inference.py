@@ -315,7 +315,8 @@ def main() -> int:
     config = {
         "clip_id": clip_id,
         "map_name": cfg["map_name"],
-        "vehicle": cfg.get("vehicle", "pacifica"),
+        "feature_vehicle": plan_cfg.get("feature_vehicle", "pacifica"),
+        "calibration": cfg["calibration"],
         "data": cfg.get("data"),
     }
 
@@ -344,7 +345,9 @@ def main() -> int:
     post_result = None
     post_cfg = plan_cfg.get("postprocess", {})
     if post_cfg.get("enabled", True):
-        postprocessor = get_postprocessor(post_cfg["name"])()
+        postprocessor = get_postprocessor(post_cfg["name"])(
+            vehicle_parameters=build_result.scene_context["ego_state"].car_footprint.vehicle_parameters
+        )
         post_result = postprocessor.run(
             model_output=output["raw_output"],
             normalized_data=build_result.normalized_numpy_data,

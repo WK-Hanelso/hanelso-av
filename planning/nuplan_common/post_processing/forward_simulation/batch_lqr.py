@@ -9,7 +9,6 @@ import numpy as np
 import numpy.typing as npt
 from nuplan.common.actor_state.vehicle_parameters import (
     VehicleParameters,
-    get_pacifica_parameters,
 )
 from nuplan.common.geometry.compute import principal_value
 from nuplan.planning.simulation.simulation_time_controller.simulation_iteration import (
@@ -80,7 +79,7 @@ class BatchLQRTracker:
         curvature_rate_penalty: float = 1e-2,
         stopping_proportional_gain: float = 0.5,
         stopping_velocity: float = 0.2,
-        vehicle: VehicleParameters = get_pacifica_parameters(),
+        vehicle: VehicleParameters = None,
         estop: bool = False,
         soft_brake: bool = False,
     ):
@@ -122,6 +121,8 @@ class BatchLQRTracker:
         ), "We expect the horizon to be greater than 1 - else steering_rate has no impact with Euler integration."
         self._discretization_time = discretization_time
         self._tracking_horizon = tracking_horizon
+        if vehicle is None:
+            raise ValueError("BatchLQRTracker requires explicit vehicle parameters")
         self._wheel_base = vehicle.wheel_base
 
         # Velocity/Curvature Estimation Parameters

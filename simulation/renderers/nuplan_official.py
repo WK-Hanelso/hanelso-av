@@ -89,7 +89,9 @@ class NuplanOfficialRenderer(Renderer):
         )
         self._sample_interval = float(sample_interval)
         self._history_size = int(clip["hist_steps"])
-        self._renderer = NuplanScenarioRender()
+        self._renderer = NuplanScenarioRender(
+            vehicle_parameters=clip["vehicle_parameters"]
+        )
         self._ego_history: List[Any] = []
         self._obs_history: List[Any] = []
 

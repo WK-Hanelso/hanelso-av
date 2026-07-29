@@ -26,7 +26,7 @@ class LogReplayDriver(EgoDriver):
         clip = self.clip
         dataset = clip["dataset"]
         n_samples = len(dataset["sample_tokens"])
-        ego_dims = np.asarray(dataset["ego_dims"], dtype=np.float64)  # (width, length)
+        ego_dims = np.asarray(dataset["physical_ego_dims"], dtype=np.float64)  # (width, length)
         frames_dir.mkdir(parents=True, exist_ok=True)
 
         steps = int(sim_cfg["steps"])

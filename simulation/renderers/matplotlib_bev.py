@@ -19,9 +19,9 @@ from simulation.sim_utils import (
     CATEGORY_COLORS,
     STATIC_COLOR,
     UNKNOWN_COLOR,
+    calibration_rear_axle_to_center,
     ego_center_from_rear_axle,
     oriented_box_corners,
-    pacifica_rear_axle_to_center,
 )
 from .base import Renderer, register_renderer
 
@@ -34,7 +34,9 @@ class MatplotlibBEVRenderer(Renderer):
     def __init__(self, clip: Dict[str, Any], map_graph: dict, sim_cfg: Dict[str, Any], mode: str) -> None:
         super().__init__(clip, map_graph, sim_cfg, mode)
         self.view_radius = float(sim_cfg.get("view_radius", 50.0))
-        self.rear_axle_to_center = pacifica_rear_axle_to_center()
+        self.rear_axle_to_center = calibration_rear_axle_to_center(
+            clip["dataset"]["calibration"]
+        )
         self._lanes = []
         for lane in map_graph.get("lanes", []):
             central = np.asarray([p[:2] for p in lane["central"]], dtype=np.float64)

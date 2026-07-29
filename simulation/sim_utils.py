@@ -9,6 +9,8 @@ from typing import Any, Dict, List
 
 import numpy as np
 
+from calibration.vehicle import max_tire_angle, to_vehicle_parameters
+
 PROGRESS_WINDOW = 80  # frames scanned ahead for progress alignment
 
 CATEGORY_COLORS = {
@@ -48,10 +50,8 @@ def ego_center_from_rear_axle(x: float, y: float, heading: float, rear_axle_to_c
     )
 
 
-def pacifica_rear_axle_to_center() -> float:
-    from nuplan.common.actor_state.vehicle_parameters import get_pacifica_parameters
-
-    return float(get_pacifica_parameters().rear_axle_to_center)
+def calibration_rear_axle_to_center(calib: Dict[str, Any]) -> float:
+    return float(to_vehicle_parameters(calib).rear_axle_to_center)
 
 
 def frame_agents(dataset: Dict[str, Any], frame_index: int, center_xy: np.ndarray, radius: float) -> List[Dict[str, Any]]:
@@ -110,22 +110,28 @@ def make_mp4(frames_dir: Path, out_path: Path, fps: int) -> Dict[str, Any]:
     return {"ok": False, "attempts": attempts}
 
 
-def build_ego_state_from_array(state: np.ndarray, time_point_us: int):
+def build_ego_state_from_array(
+    state: np.ndarray,
+    time_point_us: int,
+    calib: Dict[str, Any],
+):
     from nuplan.common.actor_state.ego_state import EgoState
     from nuplan.common.actor_state.state_representation import (
         StateSE2,
         StateVector2D,
         TimePoint,
     )
-    from nuplan.common.actor_state.vehicle_parameters import get_pacifica_parameters
+    vehicle_parameters = to_vehicle_parameters(calib)
 
     return EgoState.build_from_rear_axle(
         rear_axle_pose=StateSE2(float(state[0]), float(state[1]), float(state[2])),
         rear_axle_velocity_2d=StateVector2D(float(state[3]), float(state[4])),
         rear_axle_acceleration_2d=StateVector2D(float(state[5]), float(state[6])),
-        tire_steering_angle=float(np.clip(state[7], -0.61, 0.61)),
+        tire_steering_angle=float(
+            np.clip(state[7], -max_tire_angle(calib), max_tire_angle(calib))
+        ),
         time_point=TimePoint(int(time_point_us)),
-        vehicle_parameters=get_pacifica_parameters(),
+        vehicle_parameters=vehicle_parameters,
         angular_vel=float(state[9]),
     )
 

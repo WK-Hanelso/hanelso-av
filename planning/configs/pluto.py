@@ -7,6 +7,7 @@ config = dict(
     bundle="data/model/pluto_v3",      # 아티팩트 묶음(불투명 디렉토리, ckpt+native config 쌍)
     model_config="config.yaml",        # bundle 내 native config — 경로 참조만
     checkpoint="v3_pluto.ckpt",        # bundle 내 checkpoint
+    feature_vehicle="pacifica",        # 학습 분포 pin: feature ego-shape는 모델 소유.
     device="cpu",                      # "cpu"|"cuda" — root/CLI에서 override 가능
     env="pluto-inf",                   # 이 모델의 docker 이미지(실추론용; sim/CPU는 swm-base)
     postprocess=dict(enabled=True, name="pluto"),  # postprocessor registry key

@@ -22,11 +22,11 @@ import torch
 from simulation.sim_utils import (
     PROGRESS_WINDOW,
     build_ego_state_from_array,
+    calibration_rear_axle_to_center,
     check_collision,
     ego_state_to_pose,
     frame_agents,
     make_mp4,
-    pacifica_rear_axle_to_center,
 )
 from .base import EgoDriver, register_ego_driver
 
@@ -42,12 +42,12 @@ class ModelDrivenDriver(EgoDriver):
         adapter = self.adapter
         dataset = clip["dataset"]
         n_samples = len(dataset["sample_tokens"])
-        ego_dims = np.asarray(dataset["ego_dims"], dtype=np.float64)
+        ego_dims = np.asarray(dataset["physical_ego_dims"], dtype=np.float64)
         frames_dir.mkdir(parents=True, exist_ok=True)
 
         steps = int(sim_cfg["steps"])
         view_radius = float(sim_cfg.get("view_radius", 50.0))
-        rear_axle_to_center = pacifica_rear_axle_to_center()
+        rear_axle_to_center = calibration_rear_axle_to_center(dataset["calibration"])
         start_index = sim_cfg.get("start_index")
         dt = float(clip["dt"])
         hist_steps = int(clip["hist_steps"])
@@ -71,7 +71,12 @@ class ModelDrivenDriver(EgoDriver):
         valid = list(hist_deltas <= (dt * 0.6))
 
         ego_state = adapter._build_ego_state(dataset, start)
-        forward_sim = ForwardSimulator(dt=dt, num_frames=1)
+        forward_sim = ForwardSimulator(
+            vehicle_parameters=clip["vehicle_parameters"],
+            dt=dt,
+            num_frames=1,
+            max_steering_angle=float(clip["max_tire_angle_rad"]),
+        )
 
         prog_j = start
         sim_trace = [ego_state_to_pose(ego_state)]
@@ -132,7 +137,11 @@ class ModelDrivenDriver(EgoDriver):
             rollout = forward_sim.forward(candidate[None, :81], ego_state)
             new_state = rollout[0, 1]
             new_time_us = ego_state.time_point.time_us + int(dt * 1e6)
-            new_ego_state = build_ego_state_from_array(new_state, new_time_us)
+            new_ego_state = build_ego_state_from_array(
+                new_state,
+                new_time_us,
+                dataset["calibration"],
+            )
             new_pose = ego_state_to_pose(new_ego_state)
             sim_trace.append(new_pose)
 

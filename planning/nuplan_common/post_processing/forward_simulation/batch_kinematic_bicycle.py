@@ -10,7 +10,6 @@ from nuplan.common.actor_state.ego_state import EgoState
 from nuplan.common.actor_state.state_representation import TimePoint
 from nuplan.common.actor_state.vehicle_parameters import (
     VehicleParameters,
-    get_pacifica_parameters,
 )
 from nuplan.common.geometry.compute import principal_value
 from ..common.enum import DynamicStateIndex, StateIndex
@@ -38,7 +37,7 @@ class BatchKinematicBicycleModel:
 
     def __init__(
         self,
-        vehicle: VehicleParameters = get_pacifica_parameters(),
+        vehicle: VehicleParameters = None,
         max_steering_angle: float = np.pi / 3,
         accel_time_constant: float = 0.2,
         steering_angle_time_constant: float = 0.05,
@@ -50,6 +49,8 @@ class BatchKinematicBicycleModel:
         :param accel_time_constant: low pass filter time constant for acceleration in s
         :param steering_angle_time_constant: low pass filter time constant for steering angle in s
         """
+        if vehicle is None:
+            raise ValueError("BatchKinematicBicycleModel requires explicit vehicle parameters")
         self._vehicle = vehicle
         self._max_steering_angle = max_steering_angle
         self._accel_time_constant = accel_time_constant

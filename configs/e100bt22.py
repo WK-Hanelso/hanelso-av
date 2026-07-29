@@ -8,7 +8,7 @@ config = dict(
     map_name="SEL",
     map_path="work/maps/SEL/map_graph.json",
     data=dict(agents="apollo_gt", prediction=None),
-    vehicle="pacifica",
+    # feature ego-shape pin은 planning/configs/pluto.py 소유.
     modules=dict(planning="pluto", perception=None, localization=None),
     calibration="e100",
     simulation="closed_loop_nuplan",
