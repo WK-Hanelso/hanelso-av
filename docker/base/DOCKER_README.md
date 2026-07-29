@@ -43,7 +43,7 @@ docker run   →  clone된 src를 -v로 마운트해 실행
 
 ## 3. 왜 nuplan은 Dockerfile이 설치하고, PLUTO는 프로젝트 내부에 두나
 
-> **정정(2026-07-29)**: PLUTO는 외부 마운트가 아니라 **`third_party/pluto/`에 vendored**(git clone에 포함)로 확정됐다. 외부 repo(`--pluto-root /opt/pluto_onnx`) 의존은 "git clone 하나로 재현" 원칙을 깨므로 제거했고, `--pluto-root` 기본값이 내부 경로를 가리킨다. 아래 표의 "clone" 열은 이 정정을 반영한다.
+> **정정(2026-07-29)**: PLUTO는 외부 마운트가 아니라 **`planning/models/pluto/src/`에 vendored**(git clone에 포함)로 확정됐다. 외부 repo(`별도 PLUTO checkout`) 의존은 "git clone 하나로 재현" 원칙을 깨므로 제거했고, repo 내부 소스를 직접 사용한다. 아래 표의 "clone" 열은 이 정정을 반영한다.
 
 둘 다 repo 밖 의존이지만 성격이 다르다:
 
@@ -51,7 +51,7 @@ docker run   →  clone된 src를 -v로 마운트해 실행
 |---|---|---|
 | 성격 | third-party **라이브러리** | 프로젝트가 쓰는 **소스**(PLUTO 네트워크/feature/post 코드) |
 | git | 자체 remote 존재(motional) | remote 없음(소스 트리) |
-| 처리 | **Dockerfile이 버전 고정 설치** `pip install --no-deps "git+…nuplan-devkit.git@e924167"` | **`third_party/pluto/`에 vendored** → git clone에 포함, `--pluto-root` 기본=내부 경로 |
+| 처리 | **Dockerfile이 버전 고정 설치** `pip install --no-deps "git+…nuplan-devkit.git@e924167"` | **`planning/models/pluto/src/`에 vendored** → git clone에 포함, 직접 배치된 repo 내부 소스 |
 | 이유 | 버전 고정된 외부 라이브러리라 환경의 일부 | 코드라서 프로젝트 안에 있어야 clone 하나로 재현됨 |
 
 → "환경(라이브러리)"과 "소스(코드)"의 경계: 라이브러리는 이미지가 설치, 소스는 프로젝트(clone)가 가진다.
@@ -110,7 +110,7 @@ CUDA/nvidia 패키지 = 없음
 
 ## 8. 왜 헬스체크는 "환경만" 검증하나
 
-**필요성**: 코드(`common`, 그리고 vendored `third_party/pluto`)는 이미지에 없고 git clone(마운트)으로 확보된다. 그래서 빌드 시점엔 코드 import를 검증할 수 없다.
+**필요성**: 코드(`common`, 그리고 vendored `planning/models/pluto/src`)는 이미지에 없고 git clone(마운트)으로 확보된다. 그래서 빌드 시점엔 코드 import를 검증할 수 없다.
 
 **결정**: Dockerfile의 `RUN python -c "import …"` 헬스체크는 **설치형 의존성**(torch·onnxruntime·nuplan·cv2·geopandas·hydra·timm 등)만 import해 "환경이 제대로 섰는지"를 검증한다. 코드까지 포함한 전 경로 검증은 **마운트 스모크**(run_inference)로 별도 수행한다.
 

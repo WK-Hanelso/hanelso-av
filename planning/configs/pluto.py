@@ -9,7 +9,6 @@ config = dict(
     checkpoint="v3_pluto.ckpt",        # bundle 내 checkpoint
     device="cpu",                      # "cpu"|"cuda" — root/CLI에서 override 가능
     env="pluto-inf",                   # 이 모델의 docker 이미지(실추론용; sim/CPU는 swm-base)
-    use_v3_planning_decoder=True,
     postprocess=dict(enabled=True, name="pluto"),  # postprocessor registry key
     input_builder="pluto_feature",     # feature adapter(dataloader) registry key
 )

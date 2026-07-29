@@ -10,7 +10,7 @@ from nuplan.planning.training.preprocessing.features.abstract_model_feature impo
 )
 from torch.nn.utils.rnn import pad_sequence
 
-from src.utils.utils import to_device, to_numpy, to_tensor
+from planning.models.pluto.src.utils.utils import to_device, to_numpy, to_tensor
 
 
 @dataclass

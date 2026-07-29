@@ -22,6 +22,18 @@ provenance 축은 root config `data=dict(agents="apollo_gt", prediction=None)`�
 현재 유효 값은 이 조합뿐(bevfusion/apollo는 예약). 스키마 체크는 "파일 존재+필수 키"
 수준이며 물리 검증은 `tools/parser_validation` 소관.
 
+## 데이터 티어 계약
+
+- `raw`: 센서 원본 tier. record/bag, camera images, lidar, calib처럼 재파싱 가능한 원재료를 뜻한다.
+- `parsed`: 현재 `work/<clip>/parsed`에 놓이는 통합 JSON 테이블 tier다.
+- `derived`: 모델/평가용 파생 산출물 tier다. 예: `map_graph`, prediction, future sensor cache.
+
+E2E·VLM 계열 모델은 `raw` tier를 직접 요구할 수 있다. 그 경우에도 같은 자리에 꽂히며,
+camera/lidar/calib를 `REQUIRES`로 선언하는 방식으로 계약을 확장한다. `raw` tier의 실제 구현은
+첫 소비자 모델이 들어올 때 추가한다.
+
+센서 기반 E2E 모델의 closed-loop simulation은 센서 재시뮬레이션이 없으면 완전한 의미의 회귀가 아니다.
+
 ## 사용 예
 
 ```python

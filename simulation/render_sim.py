@@ -95,7 +95,6 @@ def main() -> int:
     policy = get_policy(plan_cfg["policy"])(
         config_path=str(bundle / plan_cfg["model_config"]),
         checkpoint_path=str(bundle / plan_cfg["checkpoint"]),
-        use_v3_planning_decoder=plan_cfg.get("use_v3_planning_decoder", True),
         device=args.device or plan_cfg.get("device", "cpu"),
     )
     postprocessor = get_postprocessor(plan_cfg.get("postprocess", {})["name"])()

@@ -22,8 +22,8 @@ from nuplan.planning.simulation.planner.abstract_planner import (
     PlannerInput,
 )
 
-from src.scenario_manager.scenario_manager import ScenarioManager
-from ..utils.vis import *
+from planning.nuplan_common.scenario_manager.scenario_manager import ScenarioManager
+from .pluto_vis import *
 
 AGENT_COLOR_MAPPING = {
     TrackedObjectType.VEHICLE: "#001eff",

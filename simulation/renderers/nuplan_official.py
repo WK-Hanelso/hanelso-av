@@ -26,10 +26,16 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from planning.models.pluto.input_builder import DT, HIST_STEPS
-from planning.models.pluto.postprocess import PlutoPostProcessor
-from planning.models.pluto.paths import ensure_pluto_on_path
 from .base import Renderer, register_renderer
+
+
+def _global_to_local(global_trajectory: np.ndarray, ego_state) -> np.ndarray:
+    origin = ego_state.rear_axle.array
+    angle = ego_state.rear_axle.heading
+    rot_mat = np.array([[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]])
+    position = np.matmul(global_trajectory[..., :2] - origin, rot_mat)
+    heading = global_trajectory[..., 2] - angle
+    return np.concatenate([position, heading[..., None]], axis=-1)
 
 
 def nuplan_overlays(post, output, build):
@@ -45,7 +51,7 @@ def nuplan_overlays(post, output, build):
             post["candidate_trajectories_global"], dtype=np.float64
         )[keep]
         candidates_local = (
-            PlutoPostProcessor._global_to_local(candidates, ego_state)
+            _global_to_local(candidates, ego_state)
             if len(candidates)
             else None
         )
@@ -66,9 +72,8 @@ class NuplanOfficialRenderer(Renderer):
 
     def __init__(self, clip: Dict[str, Any], map_graph: dict, sim_cfg: Dict[str, Any], mode: str) -> None:
         super().__init__(clip, map_graph, sim_cfg, mode)
-        ensure_pluto_on_path()
         from nuplan.common.actor_state.state_representation import StateSE2
-        from src.feature_builders.nuplan_scenario_render import NuplanScenarioRender
+        from simulation.renderers.nuplan_scenario_render import NuplanScenarioRender
 
         mission_goal_xy = clip["route_payload"].get("destination_xy")
         if mission_goal_xy is None:
@@ -77,12 +82,13 @@ class NuplanOfficialRenderer(Renderer):
                 "mission_goal unconditionally, so it cannot be None."
             )
         stride = int(sim_cfg.get("stride", 2))
-        sample_interval = DT * stride if mode == "open_loop" else DT
+        dt = float(clip["dt"])
+        sample_interval = dt * stride if mode == "open_loop" else dt
         self._mission_goal = StateSE2(
             float(mission_goal_xy[0]), float(mission_goal_xy[1]), 0.0
         )
         self._sample_interval = float(sample_interval)
-        self._history_size = int(HIST_STEPS)
+        self._history_size = int(clip["hist_steps"])
         self._renderer = NuplanScenarioRender()
         self._ego_history: List[Any] = []
         self._obs_history: List[Any] = []

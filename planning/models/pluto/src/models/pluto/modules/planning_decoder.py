@@ -4,14 +4,9 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
-from src.models.pluto.layers.embedding import PointsEncoder
-from src.models.pluto.layers.fourier_embedding import FourierEmbedding
-from src.models.pluto.layers.mlp_layer import MLPLayer
-
-
-# Original reference:
-# vendored: third_party/pluto/src/models/pluto/modules/planning_decoder.py
-# Sole delta vs original: r2r_attn key_padding_mask repeat -> repeat_interleave.
+from ..layers.embedding import PointsEncoder
+from ..layers.fourier_embedding import FourierEmbedding
+from ..layers.mlp_layer import MLPLayer
 
 
 class DecoderLayer(nn.Module):

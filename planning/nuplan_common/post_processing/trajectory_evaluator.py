@@ -15,7 +15,7 @@ from nuplan.common.maps.maps_datatypes import TrafficLightStatusData
 from nuplan.planning.simulation.observation.observation_type import DetectionsTracks
 from shapely import LineString
 
-from src.scenario_manager.occupancy_map import OccupancyMap
+from planning.nuplan_common.scenario_manager.occupancy_map import OccupancyMap
 
 from .common.enum import (
     CollisionType,

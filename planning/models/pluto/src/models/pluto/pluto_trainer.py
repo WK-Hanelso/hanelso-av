@@ -15,10 +15,10 @@ from nuplan.planning.training.modeling.types import (
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from torchmetrics import MetricCollection
-from src.metrics import MR, minADE, minFDE
-from src.metrics.prediction_avg_ade import PredAvgADE
-from src.metrics.prediction_avg_fde import PredAvgFDE
-from src.optim.warmup_cos_lr import WarmupCosLR
+from planning.models.pluto.src.metrics import MR, minADE, minFDE
+from planning.models.pluto.src.metrics.prediction_avg_ade import PredAvgADE
+from planning.models.pluto.src.metrics.prediction_avg_fde import PredAvgFDE
+from planning.models.pluto.src.optim.warmup_cos_lr import WarmupCosLR
 
 from .loss.esdf_collision_loss import ESDFCollisionLoss
 

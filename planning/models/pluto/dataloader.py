@@ -68,11 +68,8 @@ class ApolloPlutoFeatureAdapter:
         "map_graph",
     ]
 
-    def __init__(self, pluto_root: Optional[str] = None) -> None:
-        from planning.models.pluto.paths import ensure_pluto_on_path
-
+    def __init__(self) -> None:
         self._builder = PlutoInputBuilder()
-        self._pluto_root = ensure_pluto_on_path(pluto_root)
 
     def _check_contract(self, parsed_dir: str, config: dict) -> None:
         """data_devkit 계약 check — 경로는 parsed_dir 기준으로 해석한다.
@@ -99,12 +96,12 @@ class ApolloPlutoFeatureAdapter:
         )
 
     def _import_pluto_feature(self):
-        from src.features.pluto_feature import PlutoFeature
+        from planning.models.pluto.src.features.pluto_feature import PlutoFeature
 
         return PlutoFeature
 
     def _import_scenario_manager(self):
-        from src.scenario_manager.scenario_manager import ScenarioManager
+        from planning.nuplan_common.scenario_manager.scenario_manager import ScenarioManager
 
         return ScenarioManager
 
@@ -198,6 +195,8 @@ class ApolloPlutoFeatureAdapter:
             "route_payload": route_payload,
             "map_api": apollo_map,
             "map_name": map_name,
+            "dt": DT,
+            "hist_steps": HIST_STEPS,
             "config": dict(config),
         }
 

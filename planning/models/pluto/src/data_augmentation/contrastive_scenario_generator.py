@@ -17,10 +17,10 @@ from nuplan.planning.training.data_augmentation.data_augmentation_util import (
 )
 from nuplan.planning.training.modeling.types import FeaturesType, TargetsType
 
-from src.features.pluto_feature import PlutoFeature
-from src.utils.collision_checker import CollisionChecker
-from src.utils.utils import crop_img_from_center
-from src.utils.utils import shift_and_rotate_img
+from planning.models.pluto.src.features.pluto_feature import PlutoFeature
+from planning.models.pluto.src.utils.collision_checker import CollisionChecker
+from planning.models.pluto.src.utils.utils import crop_img_from_center
+from planning.models.pluto.src.utils.utils import shift_and_rotate_img
 
 MAP_CONTRAST_TYPE = 0
 AGENT_CONTRAST_TYPE = 1

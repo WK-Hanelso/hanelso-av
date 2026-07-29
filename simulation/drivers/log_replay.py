@@ -14,7 +14,6 @@ from typing import Any, Dict
 import numpy as np
 import torch
 
-from planning.models.pluto.input_builder import HIST_STEPS
 from simulation.sim_utils import frame_agents, local_to_global, make_mp4
 from .base import EgoDriver, register_ego_driver
 
@@ -34,7 +33,8 @@ class LogReplayDriver(EgoDriver):
         stride = int(sim_cfg.get("stride", 2))
         view_radius = float(sim_cfg.get("view_radius", 50.0))
         start_index = sim_cfg.get("start_index")
-        start = start_index if start_index is not None else HIST_STEPS - 1
+        hist_steps = int(clip["hist_steps"])
+        start = start_index if start_index is not None else hist_steps - 1
         indices = list(range(start, n_samples, stride))[:steps]
 
         records = []

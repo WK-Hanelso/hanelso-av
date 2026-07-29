@@ -29,9 +29,9 @@ from nuplan.planning.training.preprocessing.features.abstract_model_feature impo
 )
 from shapely import LineString, Point
 
-from src.features.pluto_feature import PlutoFeature
-from src.scenario_manager.cost_map_manager import CostMapManager
-from src.scenario_manager.scenario_manager import OccupancyType, ScenarioManager
+from planning.models.pluto.src.features.pluto_feature import PlutoFeature
+from planning.nuplan_common.scenario_manager.cost_map_manager import CostMapManager
+from planning.nuplan_common.scenario_manager.scenario_manager import OccupancyType, ScenarioManager
 from . import common
 
 

@@ -9,7 +9,7 @@ from nuplan.planning.training.preprocessing.target_builders.ego_trajectory_targe
     EgoTrajectoryTargetBuilder,
 )
 
-from src.feature_builders.pluto_feature_builder import PlutoFeatureBuilder
+from planning.models.pluto.src.feature_builders.pluto_feature_builder import PlutoFeatureBuilder
 
 from .layers.fourier_embedding import FourierEmbedding
 from .layers.transformer import TransformerEncoderLayer

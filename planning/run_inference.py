@@ -236,30 +236,6 @@ def run_checks(normalized_data: Dict[str, Any], output: Dict[str, Any]) -> Dict[
     }
 
 
-def compare_decoders(
-    feature: Any,
-    policy_name: str,
-    policy_kwargs: Dict[str, Any],
-) -> Dict[str, Any]:
-    policy_cls = get_policy(policy_name)
-    original_policy = policy_cls(**{**policy_kwargs, "use_v3_planning_decoder": False})
-    v3_policy = policy_cls(**{**policy_kwargs, "use_v3_planning_decoder": True})
-    with torch.inference_mode():
-        original_output = original_policy.infer(feature)["raw_output"]
-        v3_output = v3_policy.infer(feature)["raw_output"]
-
-    original_traj = original_output["output_trajectory"].detach().cpu().numpy()
-    v3_traj = v3_output["output_trajectory"].detach().cpu().numpy()
-    abs_diff = np.abs(original_traj - v3_traj)
-    return {
-        "original_decoder": original_policy.load_report["decoder_swap"]["decoder"],
-        "v3_decoder": v3_policy.load_report["decoder_swap"]["decoder"],
-        "outputs_differ": bool(not np.allclose(original_traj, v3_traj, atol=1e-6)),
-        "max_abs_diff": float(abs_diff.max()),
-        "mean_abs_diff": float(abs_diff.mean()),
-    }
-
-
 def summarize_postprocess(post_result: Dict[str, Any]) -> Dict[str, Any]:
     def as_list(value: np.ndarray) -> list:
         return [round(float(v), 6) for v in np.asarray(value).reshape(-1)]
@@ -357,7 +333,6 @@ def main() -> int:
     policy_kwargs = {
         "config_path": str(bundle / plan_cfg["model_config"]),
         "checkpoint_path": str(bundle / plan_cfg["checkpoint"]),
-        "use_v3_planning_decoder": plan_cfg.get("use_v3_planning_decoder", True),
         "device": device,
     }
     policy_cls = get_policy(plan_cfg["policy"])
@@ -406,9 +381,6 @@ def main() -> int:
     checks = run_checks(build_result.normalized_numpy_data, output["raw_output"])
     if post_result is not None:
         checks.update(run_postprocess_checks(post_result))
-    decoder_comparison = compare_decoders(
-        build_result.feature, plan_cfg["policy"], policy_kwargs
-    )
     report = {
         "clip_id": config["clip_id"],
         "root_config": str(Path(args.config).resolve()),
@@ -428,7 +400,6 @@ def main() -> int:
         "postprocess": (
             summarize_postprocess(post_result) if post_result is not None else None
         ),
-        "decoder_comparison": decoder_comparison,
         "artifacts": {
             "outputs_npz": str((out_dir / "outputs.npz").resolve()),
             "infer_report": str((out_dir / "infer_report.txt").resolve()),

@@ -19,8 +19,6 @@ from typing import Any, Dict, List
 import numpy as np
 import torch
 
-from planning.models.pluto.input_builder import DT, HIST_STEPS
-from planning.models.pluto.paths import ensure_pluto_on_path
 from simulation.sim_utils import (
     PROGRESS_WINDOW,
     build_ego_state_from_array,
@@ -37,8 +35,7 @@ class ModelDrivenDriver(EgoDriver):
     mode = "closed_loop"
 
     def run(self, renderer: Any, frames_dir: Path, mode_name: str, out_dir: Path) -> Dict[str, Any]:
-        ensure_pluto_on_path()
-        from src.post_processing.forward_simulation.forward_simulator import ForwardSimulator
+        from planning.nuplan_common.post_processing.forward_simulation.forward_simulator import ForwardSimulator
 
         sim_cfg = self.sim_cfg
         clip = self.clip
@@ -52,7 +49,9 @@ class ModelDrivenDriver(EgoDriver):
         view_radius = float(sim_cfg.get("view_radius", 50.0))
         rear_axle_to_center = pacifica_rear_axle_to_center()
         start_index = sim_cfg.get("start_index")
-        start = start_index if start_index is not None else HIST_STEPS - 1
+        dt = float(clip["dt"])
+        hist_steps = int(clip["hist_steps"])
+        start = start_index if start_index is not None else hist_steps - 1
         ts = dataset["sample_ts_sec"]
 
         # --- init sim ego history from the log (past only, ends at `start`)
@@ -69,10 +68,10 @@ class ModelDrivenDriver(EgoDriver):
             )
             for i in hist_idx
         ]
-        valid = list(hist_deltas <= (DT * 0.6))
+        valid = list(hist_deltas <= (dt * 0.6))
 
         ego_state = adapter._build_ego_state(dataset, start)
-        forward_sim = ForwardSimulator(dt=DT, num_frames=1)
+        forward_sim = ForwardSimulator(dt=dt, num_frames=1)
 
         prog_j = start
         sim_trace = [ego_state_to_pose(ego_state)]
@@ -132,7 +131,7 @@ class ModelDrivenDriver(EgoDriver):
                 candidate = np.concatenate([candidate, pad], axis=0)
             rollout = forward_sim.forward(candidate[None, :81], ego_state)
             new_state = rollout[0, 1]
-            new_time_us = ego_state.time_point.time_us + int(DT * 1e6)
+            new_time_us = ego_state.time_point.time_us + int(dt * 1e6)
             new_ego_state = build_ego_state_from_array(new_state, new_time_us)
             new_pose = ego_state_to_pose(new_ego_state)
             sim_trace.append(new_pose)

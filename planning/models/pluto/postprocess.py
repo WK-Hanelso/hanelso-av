@@ -23,8 +23,6 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 from scipy.special import softmax
 
-from planning.models.pluto.paths import ensure_pluto_on_path
-
 
 class PlutoPostProcessor:
     """Original PlutoPlanner post-processing (trim -> evaluate -> argmax ->
@@ -32,16 +30,13 @@ class PlutoPostProcessor:
 
     def __init__(
         self,
-        pluto_root: Optional[str] = None,
         candidate_max_num: int = 20,
         learning_based_score_weight: float = 0.25,
         eval_dt: float = 0.1,
         eval_num_frames: int = 80,
     ) -> None:
-        ensure_pluto_on_path(pluto_root)
-
-        from src.post_processing.emergency_brake import EmergencyBrake
-        from src.post_processing.trajectory_evaluator import TrajectoryEvaluator
+        from planning.nuplan_common.post_processing.emergency_brake import EmergencyBrake
+        from planning.nuplan_common.post_processing.trajectory_evaluator import TrajectoryEvaluator
 
         self._eval_dt = float(eval_dt)
         self._eval_num_frames = int(eval_num_frames)

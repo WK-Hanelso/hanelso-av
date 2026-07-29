@@ -28,7 +28,7 @@ from nuplan.planning.training.modeling.torch_module_wrapper import TorchModuleWr
 from nuplan.planning.training.modeling.types import FeaturesType
 from scipy.special import softmax
 
-from src.feature_builders.nuplan_scenario_render import NuplanScenarioRender
+from simulation.renderers.nuplan_scenario_render import NuplanScenarioRender
 
 from ..post_processing.emergency_brake import EmergencyBrake
 from ..post_processing.trajectory_evaluator import TrajectoryEvaluator
