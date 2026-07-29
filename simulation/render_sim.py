@@ -4,7 +4,7 @@
         [--mode closed_loop] [--renderer nuplan] [--steps 3] ...
 
 root config의 simulation 이름이 simulation/configs/<이름>.py로 해석되고, CLI
-인자는 그 위에 덮어쓴다.  조립: feature adapter(planning/input registry) +
+인자는 그 위에 덮어쓴다.  조립: dataloader(planning registry) +
 policy(planning/policy registry) + postprocessor + renderer(simulation/renderers
 registry) + ego-driver(simulation/drivers registry; open_loop=log_replay,
 closed_loop=model_driven).
@@ -35,7 +35,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from common.config import load_config, resolve_repo_path
 from planning.interface import (
-    get_feature_adapter,
+    get_dataloader,
     get_policy,
     get_postprocessor,
     load_model,
@@ -88,7 +88,7 @@ def main() -> int:
         "vehicle": cfg.get("vehicle", "pacifica"),
         "data": cfg.get("data"),
     }
-    adapter = get_feature_adapter(plan_cfg["input_builder"])()
+    adapter = get_dataloader(plan_cfg["dataloader"])()
     clip = adapter.prepare_clip(str(parsed_dir), map_graph, config)
 
     bundle = resolve_repo_path(plan_cfg["bundle"])

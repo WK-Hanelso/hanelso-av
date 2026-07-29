@@ -1,9 +1,9 @@
-"""planning inference driver (C-SWM-022): root config 하나로 조립·실행.
+"""planning inference driver (C-SWM-025): root config 하나로 조립·실행.
 
     python planning/run_inference.py configs/e100bt25.py [--device cuda]
 
 root config의 modules.planning 이름이 planning/configs/<이름>.py로 해석되고,
-policy/input_builder는 registry 문자열로 조립된다.  모델 아티팩트는 bundle
+policy/dataloader는 registry 문자열로 조립된다.  모델 아티팩트는 bundle
 (native config + checkpoint 쌍)에서 경로 참조로 읽는다.
 출력: work/<clip_id>/inference/{outputs.npz, infer_report.txt, infer_bev.png}.
 """
@@ -33,7 +33,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from common.config import load_config, resolve_repo_path
 from planning.interface import (
-    get_feature_adapter,
+    get_dataloader,
     get_policy,
     get_postprocessor,
     load_model,
@@ -319,7 +319,7 @@ def main() -> int:
         "data": cfg.get("data"),
     }
 
-    adapter_cls = get_feature_adapter(plan_cfg["input_builder"])
+    adapter_cls = get_dataloader(plan_cfg["dataloader"])
     adapter = adapter_cls()
     build_result = adapter.build(
         parsed_dir=str(parsed_dir),

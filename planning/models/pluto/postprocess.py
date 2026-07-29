@@ -6,7 +6,7 @@ Reuses the ORIGINAL pluto post-processing stack unchanged:
   - src.post_processing.emergency_brake.EmergencyBrake
 
 Inputs are (a) the raw model output dict and (b) the scene context produced by
-ApolloPlutoFeatureAdapter (nuPlan EgoState / DetectionsTracks / ScenarioManager
+ApolloPlutoDataloader (nuPlan EgoState / DetectionsTracks / ScenarioManager
 route_lane_dict + drivable_area_map + reference lines).
 
 This is a deployment component shared by the real vehicle and the simulator; it
@@ -23,8 +23,10 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 from scipy.special import softmax
 
+from planning.interface import Postprocessor, register_postprocessor
 
-class PlutoPostProcessor:
+
+class PlutoPostProcessor(Postprocessor):
     """Original PlutoPlanner post-processing (trim -> evaluate -> argmax ->
     emergency brake) rewired to our scene context."""
 
@@ -360,8 +362,5 @@ class PlutoPostProcessor:
             ],
             axis=0,
         )
-
-
-from planning.interface import register_postprocessor
 
 register_postprocessor("pluto", PlutoPostProcessor)

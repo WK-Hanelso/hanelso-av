@@ -10,7 +10,7 @@ nuPlan 계열 공용부(sim/평가/route/reference-line)는 `nuplan_common/`로 
 
 | 경로 | 역할 |
 |---|---|
-| `interface.py` | Policy/InputBuilder ABC + registry 4종(policy·input_builder·feature adapter·postprocessor) + `load_model(이름)`/`available_models()` 동적 로딩. 드라이버의 유일한 planning 진입점. |
+| `interface.py` | Policy/Dataloader/Postprocessor ABC + registry 3종(policy·dataloader·postprocessor) + `load_model(이름)`/`available_models()` 동적 로딩. 드라이버의 유일한 planning 진입점. |
 | `models/` | 모델-우선 배치. 규약은 `models/README.md`. 현재 `pluto/`는 `src/` 아래에 원본 모델 트리를 직접 소유한다. |
 | `nuplan_common/` | planning 도메인 공용부. `scenario_manager/`, `post_processing/` 등 nuPlan 계열 route/reference-line/evaluation/simulation primitive를 둔다. |
 | `map_adapter/` | `apollo_map.py` — `map_graph.json` → nuPlan `AbstractMap` duck-type (nuplan 계열 모델 공유). |

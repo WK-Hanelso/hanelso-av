@@ -135,8 +135,7 @@ RUN="docker run --rm \
 
 $RUN python parse_map.py    ...                     # base_map.bin -> MapGraph
 $RUN python parse_clip.py   configs/e100bt25.py     # bag -> 통합포맷
-$RUN python build_input.py  ...                     # 통합포맷 -> PLUTO input
-$RUN python run_inference.py \
+$RUN python planning/run_inference.py \
       --checkpoint-path data/model/v3_pluto.ckpt ... # 추론(pth). onnx backend는 코드 추가 후 동일 환경에서
 # render -> mp4 : 스크립트 추가 후 이 환경에서 동작(ffmpeg 포함)
 ```
@@ -148,7 +147,7 @@ $RUN python run_inference.py \
 
 1. **깨끗한 컨텍스트**(호스트 로컬 소스 없이)에서 `docker build` 성공 + **§3 환경 헬스체크 통과**.
 2. **재현성 확인**: Dockerfile이 로컬 파일(requirements.txt 제외)에 의존하지 않음 — `COPY <소스>`·build.sh 부재 확인.
-3. **마운트 스모크**: clone된 트리를 마운트해 parse_clip→build_input→run_inference 실행 →
+3. **마운트 스모크**: clone된 트리를 마운트해 parse_clip→run_inference 실행 →
    `work/inference/<scene>/infer_report.txt` 가 기존 결과와 수치 정합.
    (기준: `work/inference/{E100BT-25_...00006, E100BT-22_...00014}/`)
 4. **CPU 전용**: `--gpus` 없이 동작.

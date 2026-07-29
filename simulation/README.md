@@ -32,7 +32,7 @@ python3 simulation/render_sim.py configs/e100bt25.py --mode closed_loop --render
 
 ## closed-loop 스텝 구조 (`drivers/model_driven.py`)
 
-1. **feature**: `ApolloPlutoFeatureAdapter.build_frame(clip, prog_j, sim_ego=…)` — ego row는
+1. **feature**: `ApolloPlutoDataloader.build_frame(clip, prog_j, sim_ego=…)` — ego row는
    주입된 sim ego-history(21스텝)만 사용, agent/static은 로그 프레임 `prog_j`에서 fetch.
    ego 로그 미래는 어떤 경로로도 참조하지 않는다(leakage 없음).
 2. **plan**: `policy.infer` → `PlutoPostProcessor.run` → best 궤적(global).

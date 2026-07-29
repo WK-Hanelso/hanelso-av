@@ -9,9 +9,8 @@
 1. bag + HD map 준비
 2. `parse_map.py`로 `map_graph.json` 생성
 3. `parse_clip.py`로 record를 통합 포맷으로 변환
-4. `build_input.py`로 PLUTO 입력 텐서 생성
-5. `run_inference.py`로 추론 실행
-6. 이후 cls 시뮬레이션, 렌더, mp4 인코딩
+4. `planning/run_inference.py`가 dataloader를 통해 PLUTO 입력을 조립하고 추론 실행
+5. 이후 cls 시뮬레이션, 렌더, mp4 인코딩
 
 이 이미지가 책임지는 범위는 2-6단계를 실행하기 위한 시스템 패키지와 파이썬 의존성이다. 코드는 컨테이너에 굽지 않는다.
 
@@ -115,18 +114,7 @@ docker run --rm \
 
 출력은 `work/E100BT-25_20260716151711_00006/parsed/` 아래에 생성된다.
 
-### 3. 입력 텐서 생성
-
-```bash
-docker run --rm \
-  -v "$PWD:/workspace" \
-  swm-base:latest \
-  python build_input.py configs/e100bt25.py
-```
-
-출력은 `work/E100BT-25_20260716151711_00006/input/` 아래에 생성된다.
-
-### 4. 추론 실행 (CPU)
+### 3. 추론 실행 (CPU)
 
 드라이버는 root config 하나만 받는다 (C-SWM-022 계층 config).
 
@@ -146,7 +134,7 @@ GPU 실추론은 모델 소유 이미지 `pluto-inf`(`docker/pluto-inf/`)에서
 - `work/E100BT-25_20260716151711_00006/inference/infer_report.txt`
 - `work/E100BT-22_20260716031426_00014/inference/infer_report.txt`
 
-### 5. 시뮬레이션 + 렌더 (mp4)
+### 4. 시뮬레이션 + 렌더 (mp4)
 
 `simulation/render_sim.py`가 시뮬레이션 루프와 렌더링을 함께 수행한다.
 
@@ -204,7 +192,7 @@ PY
 
 ## 상태 (컨테이너에서 검증됨)
 
-- **전 파이프라인 컨테이너 실행 확인**: `parse_map → parse_clip → build_input → run_inference(--postprocess) → simulation/render_sim(open/closed-loop, matplotlib/nuplan)` 이 이미지 안에서 동작하며, run_inference/postprocess 출력이 호스트와 일치하고 closed-loop `nuplan` mp4까지 생성된다.
+- **전 파이프라인 컨테이너 실행 확인**: `parse_map → parse_clip → run_inference(--postprocess) → simulation/render_sim(open/closed-loop, matplotlib/nuplan)` 이 이미지 안에서 동작하며, run_inference/postprocess 출력이 호스트와 일치하고 closed-loop `nuplan` mp4까지 생성된다.
 - **native_nat ≡ natten 검증**: vendored `native_nat`(planning/models/pluto/src, 순수 torch NAT, natten 미설치)와 원본 `natten` forward 출력이 `max_abs_diff ~1e-6`(allclose) — CPU/native_nat 경로가 수치 동등하므로 GPU/natten 없이도 결과가 신뢰 가능.
 - ONNX 추론 백엔드는 환경(onnxruntime)만 준비돼 있다. 현재 파이프라인은 pth backend를 쓰며, onnx CLI 연결은 필요 시 별도.
 - 이 이미지는 **환경 레이어**다. 소스(git clone)와 데이터(마운트) 없이 단독으로는 파이프라인을 수행하지 않는다.
