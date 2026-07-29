@@ -4,14 +4,9 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
-from src.models.pluto.layers.embedding import PointsEncoder
-from src.models.pluto.layers.fourier_embedding import FourierEmbedding
-from src.models.pluto.layers.mlp_layer import MLPLayer
-
-
-# Original reference:
-# vendored: third_party/pluto/src/models/pluto/modules/planning_decoder.py
-# Sole delta vs original: r2r_attn key_padding_mask repeat -> repeat_interleave.
+from ..layers.embedding import PointsEncoder
+from ..layers.fourier_embedding import FourierEmbedding
+from ..layers.mlp_layer import MLPLayer
 
 
 class DecoderLayer(nn.Module):
@@ -69,15 +64,12 @@ class DecoderLayer(nn.Module):
                 tgt2,
                 r2r_k,
                 r2r_v,
-                key_padding_mask=tgt_key_padding_mask.repeat_interleave(M, dim=0),
+                key_padding_mask=tgt_key_padding_mask.repeat(M, 1),
                 need_weights=False,
             )[0]
         else:
             tgt2 = self.r2r_attn(
-                tgt2,
-                tgt2,
-                tgt2,
-                key_padding_mask=tgt_key_padding_mask.repeat_interleave(M, dim=0),
+                tgt2, tgt2, tgt2, key_padding_mask=tgt_key_padding_mask.repeat(M, 1)
             )[0]
         tgt = tgt + self.dropout1(tgt2)
 

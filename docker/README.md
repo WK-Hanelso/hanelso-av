@@ -2,7 +2,7 @@
 
 ## 개요
 
-이 이미지는 `hanelso_swm`의 실행 환경만 제공한다. 프로젝트 소스와 `pluto_onnx` 소스는 이미지를 빌드할 때 넣지 않고, `git clone`으로 확보한 뒤 `docker run`에서 마운트해 사용한다.
+이 이미지는 `hanelso_swm`의 실행 환경만 제공한다. 프로젝트 소스는 이미지를 빌드할 때 넣지 않고 `git clone`으로 확보한 뒤 `docker run`에서 마운트한다. PLUTO 소스는 프로젝트 내부(`third_party/pluto/`)에 vendored 되어 있어 **git clone에 포함**된다(외부 마운트 불요).
 
 목표 파이프라인은 다음과 같다.
 
@@ -23,7 +23,7 @@
 | CPU 전용 | 현재 요구사항은 `torch==1.12.0+cpu`와 CPU `onnxruntime`이다. CUDA, `onnxruntime-gpu`, `natten`에 의존하지 않는다. |
 | `build.sh` 없음 | 로컬 파일을 임시 컨텍스트에 모으는 방식은 재현성을 깨뜨린다. |
 | `nuplan-devkit`는 Dockerfile에서 설치 | third-party 라이브러리이므로 Dockerfile이 버전 고정으로 설치해야 한다. |
-| `pluto_onnx`는 런타임 마운트 | `pluto_onnx`는 프로젝트가 함께 사용하는 소스이며, `run_inference.py --pluto-root`로 경로를 넘긴다. |
+| PLUTO는 프로젝트 내부 vendored | `third_party/pluto/`에 반입돼 git clone에 포함된다. 외부 repo 의존 없이 `--pluto-root` 기본값이 내부 경로를 가리킨다. |
 
 ## 이미지 구성
 
@@ -36,7 +36,7 @@
 | `geopandas`, `fiona`, `rasterio`, `pyproj`, `rtree` | 포함 | nuPlan 지오 런타임 |
 | `nuplan-devkit@e924167` | 포함 | Dockerfile에서 `pip install --no-deps` |
 | 프로젝트 소스 | 제외 | `docker run`에서 마운트 |
-| `pluto_onnx` 소스 | 제외 | `docker run`에서 마운트 |
+| PLUTO 소스 | 제외(이미지엔 안 구움) | `third_party/pluto/`에 vendored → git clone에 포함 |
 | `data/`, `work/`, 모델 파일 | 제외 | `docker run`에서 마운트 |
 
 ## 빌드
@@ -61,14 +61,13 @@ docker build -t hanelso-swm-env:latest -f docker/Dockerfile docker/
 - 리포지토리 루트는 `/workspace`로 마운트한다.
 - 실행 중 생성되는 결과는 `/workspace/work` 아래에 쌓인다.
 - 입력 데이터와 모델은 `/workspace/data`에서 읽는다.
-- `pluto_onnx`는 별도 경로에 마운트하고 `--pluto-root`로 전달한다.
+- PLUTO 소스는 `third_party/pluto/`에 vendored 되어 있어 별도 마운트가 필요 없다(`--pluto-root` 기본값 = 내부 경로).
 
 예시:
 
 ```bash
 docker run --rm -it \
   -v "$PWD:/workspace" \
-  -v /home/hanelso/hanelso/pluto_onnx:/opt/pluto_onnx:ro \
   hanelso-swm-env:latest \
   bash
 ```
@@ -80,7 +79,6 @@ docker run --rm -it \
   -v "$PWD:/workspace" \
   -v "$PWD/data:/workspace/data" \
   -v "$PWD/work:/workspace/work" \
-  -v /home/hanelso/hanelso/pluto_onnx:/opt/pluto_onnx:ro \
   hanelso-swm-env:latest \
   bash
 ```
@@ -135,14 +133,12 @@ docker run --rm \
 ```bash
 docker run --rm \
   -v "$PWD:/workspace" \
-  -v /home/hanelso/hanelso/pluto_onnx:/opt/pluto_onnx:ro \
   hanelso-swm-env:latest \
   python run_inference.py \
     --parsed-dir work/E100BT-25_20260716151711_00006/parsed \
     --map-path work/maps/AYG/map_graph.json \
     --map-name AYG \
     --vehicle e100bt-25 \
-    --pluto-root /opt/pluto_onnx \
     --checkpoint-path data/model/v3_pluto.ckpt \
     --out-root work/inference
 ```
@@ -165,14 +161,12 @@ docker run --rm \
 ```bash
 docker run --rm \
   -v "$PWD:/workspace" \
-  -v /home/hanelso/hanelso/pluto_onnx:/opt/pluto_onnx:ro \
   hanelso-swm-env:latest \
   python simulation/render_sim.py \
     --mode closed_loop --renderer nuplan \
     --parsed-dir work/E100BT-25_20260716151711_00006/parsed \
     --map-path work/maps/AYG/map_graph.json --map-name AYG \
-    --vehicle e100bt-25 --start-index 160 --steps 120 \
-    --pluto-root /opt/pluto_onnx
+    --vehicle e100bt-25 --start-index 160 --steps 120
 ```
 
 출력: `work/sim/<clip>/<mode>[_nuplan]/frame_%05d.png` + `<mode>[_nuplan].mp4` (컨테이너 내 ffmpeg 인코딩). matplotlib/nuplan × open/closed 네 조합 모두 컨테이너에서 동작 확인됨.
@@ -199,7 +193,7 @@ Dockerfile의 마지막 `RUN python -c ...`는 설치형 의존성만 검사한�
 - 원격 설치가 네트워크 문제 없이 완료됐는지
 - `nuplan-devkit` 설치 단계가 성공했는지
 
-`pluto_onnx/common`이나 프로젝트 소스 import 실패는 여기서 검사하지 않는다. 그 코드는 이미지에 없고 런타임 마운트 대상이기 때문이다.
+`common`(프로젝트 소스)나 `third_party/pluto`(vendored) import 실패는 여기서 검사하지 않는다. 그 코드는 이미지에 없고 git clone(마운트)으로 확보되기 때문이다.
 
 ### CPU 전용 여부 확인
 
@@ -218,6 +212,6 @@ PY
 ## 상태 (컨테이너에서 검증됨)
 
 - **전 파이프라인 컨테이너 실행 확인**: `parse_map → parse_clip → build_input → run_inference(--postprocess) → simulation/render_sim(open/closed-loop, matplotlib/nuplan)` 이 이미지 안에서 동작하며, run_inference/postprocess 출력이 호스트와 일치하고 closed-loop `nuplan` mp4까지 생성된다.
-- **native_nat ≡ natten 검증**: pluto_onnx의 `native_nat`(순수 torch NAT, natten 미설치)와 원본 `natten` forward 출력이 `max_abs_diff ~1e-6`(allclose) — CPU/native_nat 경로가 수치 동등하므로 GPU/natten 없이도 결과가 신뢰 가능.
+- **native_nat ≡ natten 검증**: vendored `native_nat`(third_party/pluto, 순수 torch NAT, natten 미설치)와 원본 `natten` forward 출력이 `max_abs_diff ~1e-6`(allclose) — CPU/native_nat 경로가 수치 동등하므로 GPU/natten 없이도 결과가 신뢰 가능.
 - ONNX 추론 백엔드는 환경(onnxruntime)만 준비돼 있다. 현재 파이프라인은 pth backend를 쓰며, onnx CLI 연결은 필요 시 별도.
 - 이 이미지는 **환경 레이어**다. 소스(git clone)와 데이터(마운트) 없이 단독으로는 파이프라인을 수행하지 않는다.

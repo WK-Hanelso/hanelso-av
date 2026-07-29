@@ -9,11 +9,11 @@
 
 | 단계 | 주체 | 책임 | 산출 |
 |---|---|---|---|
-| **git clone** | git repo | **모든 src 확보** (hanelso_swm 코드 + pluto_onnx 등 소스) | 워킹트리 |
+| **git clone** | git repo | **모든 src 확보** (hanelso_swm 코드 + `third_party/pluto` vendored 포함) | 워킹트리 |
 | **docker build** | **Dockerfile** | **의존성 package·library 설치 + 환경 변수/시스템 라이브러리 구성** | 이미지 |
 | **docker run** | 실행자 | clone된 src를 **마운트**해서 환경 위에서 실행 | parsed·infer·mp4 |
 
-- **Dockerfile은 src를 모른다.** pluto_onnx·hanelso_swm 코드는 clone이 가져오고, run 시 마운트된다. Dockerfile은 그 코드가 **의존하는 외부 패키지·라이브러리·시스템 lib**만 깐다.
+- **Dockerfile은 src를 모른다.** hanelso_swm 코드(`third_party/pluto` vendored 포함)는 clone이 가져오고 run 시 마운트된다. Dockerfile은 그 코드가 **의존하는 외부 패키지·라이브러리·시스템 lib**만 깐다.
 - **build.sh 폐기.** 로컬 파일을 컨텍스트에 모으는 staging 방식은 "clone+build로 재현" 원칙에 위배 → 제거.
 - **재현성**: 이 호스트에 뭐가 있든 무관. 깨끗한 머신에서 `git clone` + `docker build` 하면 동일 환경이 생겨야 한다.
 
@@ -45,7 +45,7 @@
 - 설치: `pip install --no-deps "git+https://github.com/motional/nuplan-devkit.git@e924167"` (deps는 1-B에서 이미 설치).
 
 ### 1-D. 이미지에 넣지 않는 것
-- **src 전체**(hanelso_swm 코드, **pluto_onnx** 등): clone이 가져와 **런타임 마운트**. Dockerfile 무관.
+- **src 전체**(hanelso_swm 코드; PLUTO는 `third_party/pluto`에 vendored): clone이 가져와 **런타임 마운트**. Dockerfile 무관.
 - **data/·work/**: 마운트. **model.onnx**: 아티팩트라 마운트(생기면).
 - **onnxruntime-gpu, natten, torchvision/lightning/torchmetrics**: 불요(§ 학습전용·CUDA).
 
@@ -62,7 +62,7 @@ WORKDIR /workspace
 ```
 - `MPLBACKEND=Agg`: headless matplotlib(BEV·render).
 - `PYTHONPATH=/workspace`: 마운트될 repo 코드(`common` 등) import.
-- pluto_onnx 경로는 **런타임 결정**: 마운트된 트리에서 `run_inference --pluto-root <경로>` 로 지정(코드가 sys.path 주입). Dockerfile은 고정 경로를 강제하지 않음.
+- PLUTO는 `third_party/pluto`에 vendored 되어 `--pluto-root` 기본값이 내부 경로를 가리킨다(코드가 sys.path 주입). 외부 마운트/고정 경로 불요.
 
 ---
 
@@ -100,7 +100,7 @@ RUN pip install --no-deps \
 
 WORKDIR /workspace
 
-# 헬스체크: "환경"만 검증(설치형 의존성). src(pluto_onnx/common)는 이미지에 없으므로
+# 헬스체크: "환경"만 검증(설치형 의존성). src(common, third_party/pluto)는 이미지에 없으므로
 #   여기서 import하지 않는다 — 그건 run 시 마운트 후 스모크(§6)에서 검증.
 RUN python -c "import numpy, torch, onnxruntime, cyber_record, nuplan, shapely, \
 matplotlib, scipy, cv2, geopandas, hydra, omegaconf, pandas; \
@@ -109,7 +109,7 @@ print('ENV OK | torch', torch.__version__, '| onnxruntime', onnxruntime.__versio
 CMD ["bash"]
 ```
 
-> **주의(설계 불변식)**: 이 Dockerfile에는 `COPY pluto_onnx`, `COPY nuplan-devkit`, `COPY <소스>` 가 **없다**. requirements.txt 외에 호스트 로컬 파일에 의존하지 않는다.
+> **주의(설계 불변식)**: 이 Dockerfile에는 `COPY <소스>`(hanelso_swm/third_party/pluto/nuplan-devkit)가 **없다**. requirements.txt 외에 호스트 로컬 파일에 의존하지 않는다(소스는 clone, nuplan은 pip).
 
 ---
 
@@ -128,7 +128,7 @@ CMD ["bash"]
 ## 5. 실행 규약 (docker run — 빌드 밖)
 
 ```bash
-# clone된 워킹트리(= hanelso_swm 코드 + pluto_onnx src 포함)를 마운트
+# clone된 워킹트리(= hanelso_swm 코드 + third_party/pluto vendored 포함)를 마운트
 RUN="docker run --rm \
   -v $PWD:/workspace \
   hanelso-swm-env:latest"
@@ -136,11 +136,11 @@ RUN="docker run --rm \
 $RUN python parse_map.py    ...                     # base_map.bin -> MapGraph
 $RUN python parse_clip.py   configs/e100bt25.py     # bag -> 통합포맷
 $RUN python build_input.py  ...                     # 통합포맷 -> PLUTO input
-$RUN python run_inference.py --pluto-root <마운트내 pluto_onnx 경로> \
+$RUN python run_inference.py \
       --checkpoint-path data/model/v3_pluto.ckpt ... # 추론(pth). onnx backend는 코드 추가 후 동일 환경에서
 # render -> mp4 : 스크립트 추가 후 이 환경에서 동작(ffmpeg 포함)
 ```
-> 정확한 CLI 인자는 codex가 구현 시 실소스에서 확인·기입. pluto_onnx 경로는 clone 트리 레이아웃에 맞춤.
+> 정확한 CLI 인자는 실소스 기준. PLUTO는 vendored라 `--pluto-root` 불요(기본=third_party/pluto).
 
 ---
 
@@ -161,7 +161,7 @@ $RUN python run_inference.py --pluto-root <마운트내 pluto_onnx 경로> \
 ## 7. 미결·리스크
 
 - **cls 시뮬·render→mp4·onnx backend 코드 부재**: 본 이미지는 "환경"만 갖춤(pth+onnx CPU, sim/render 라이브러리 완비). 실제 동작은 해당 src가 clone 트리에 존재해야 함 — **코드는 별도 태스크**(docker 범위 밖).
-- **pluto_onnx 소스 관리**: clone이 가져와야 함(repo에 포함/서브모듈 등은 git 관리 결정 — docker 무관).
+- **PLUTO 소스 관리**: `third_party/pluto`에 vendored 되어 repo(clone)에 포함 — docker 무관.
 - **nuplan 커밋 e924167**: 원격 접근성 전제. 접근 불가 시 대체 pin 필요.
 - **GDAL**: geopandas/fiona/rasterio 빌드 실패 시 §1-A GDAL 폴백.
 

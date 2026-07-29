@@ -836,7 +836,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--policy", default="pluto_torch")
     parser.add_argument("--config-path", default="code/hydra/config.yaml")
     parser.add_argument("--checkpoint-path", default="data/model/v3_pluto.ckpt")
-    parser.add_argument("--pluto-root", default="/home/hanelso/hanelso/pluto_onnx")
+    parser.add_argument("--pluto-root", default=str(REPO_ROOT / "third_party" / "pluto"))
     parser.add_argument("--out-root", default="work/sim")
     parser.add_argument(
         "--postprocess",
