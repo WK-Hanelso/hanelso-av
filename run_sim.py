@@ -392,7 +392,9 @@ def main() -> int:
 
     metrics_path = Path(render_result["metrics_path"]).resolve()
     metrics = render_result["metrics"]
-    mp4_path = Path(metrics["mp4"]).resolve()
+    mp4_info = metrics["mp4"]
+    mp4_value = mp4_info["path"] if isinstance(mp4_info, dict) else mp4_info
+    mp4_path = Path(mp4_value).resolve()
     print(f"mp4: {mp4_path}")
     print(f"metrics: {metrics_path}")
     print(
