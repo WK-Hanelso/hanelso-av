@@ -27,7 +27,7 @@
 - (GDAL 폴백) geopandas/fiona/rasterio가 시스템 GDAL 요구 시 `libgdal-dev gdal-bin` 추가. 대개 manylinux 휠 번들 → 불요.
 
 ### 1-B. 파이썬 의존성 (pip)
-목표 전구간(parse·input·추론[pth/onnx]·cls 시뮬·render→mp4)이 **코드만 얹으면 돌 수 있는 슈퍼셋**. 근거 = 구 검증 render freeze(`simulation/docker/requirements.txt`, 241개) + 코드가 import하는 라이브러리.
+목표 전구간(parse·input·추론[pth/onnx]·cls 시뮬·render→mp4)이 **코드만 얹으면 돌 수 있는 슈퍼셋**. 근거 = 구 검증 render freeze(`simulation/docker/base/requirements.txt`, 241개) + 코드가 import하는 라이브러리.
 
 | 그룹 | 패키지 |
 |---|---|
@@ -115,7 +115,7 @@ CMD ["bash"]
 
 ## 4. requirements.txt 도출 방침 (codex 실작업)
 
-- **1차 소스 = 구 검증 render freeze**(`simulation/docker/requirements.txt`, 241개). 렌더·시뮬까지 실동작하던 슈퍼셋.
+- **1차 소스 = 구 검증 render freeze**(`simulation/docker/base/requirements.txt`, 241개). 렌더·시뮬까지 실동작하던 슈퍼셋.
 - 절차:
   1. 구 freeze에서 **제거**: torch 계열, onnxruntime-gpu, natten/pytorch-lightning/torchmetrics/torchvision(학습전용·§1-D), nuplan-devkit(§1-C에서 git로 별도).
   2. §1-B 그룹(backend-onnx/config/sim/render/geo/파싱) 전부 포함 확인.
@@ -131,7 +131,7 @@ CMD ["bash"]
 # clone된 워킹트리(= hanelso_swm 코드 + third_party/pluto vendored 포함)를 마운트
 RUN="docker run --rm \
   -v $PWD:/workspace \
-  hanelso-swm-env:latest"
+  swm-base:latest"
 
 $RUN python parse_map.py    ...                     # base_map.bin -> MapGraph
 $RUN python parse_clip.py   configs/e100bt25.py     # bag -> 통합포맷
@@ -153,7 +153,7 @@ $RUN python run_inference.py \
    (기준: `work/inference/{E100BT-25_...00006, E100BT-22_...00014}/`)
 4. **CPU 전용**: `--gpus` 없이 동작.
 5. EXEC 문서(`agent/C-SWM-DOCKER_EXEC.md`)에 빌드 로그·헬스체크·스모크 수치 기록.
-6. 결과물: `docker/{Dockerfile, requirements.txt, README.md}`(build.sh 없음) + 구 `simulation/docker` deprecated 배너.
+6. 결과물: `docker/base/{Dockerfile, requirements.txt, README.md}`(build.sh 없음) + 구 `simulation/docker` deprecated 배너.
 7. git commit + push (`T-SWM-DOCKER: ...`).
 
 ---
@@ -168,7 +168,7 @@ $RUN python run_inference.py \
 ---
 
 ## 8. codex 위임 노트
-- **workdir**: `/home/hanelso/hanelso/hanelso_swm`. 산출물 = `docker/{Dockerfile, requirements.txt, README.md}`.
+- **workdir**: `/home/hanelso/hanelso/hanelso_swm`. 산출물 = `docker/base/{Dockerfile, requirements.txt, README.md}`.
 - **금지**: Dockerfile에 `COPY <소스>` / build.sh 재도입 / 호스트 로컬 경로 의존.
 - **EXEC.md**: workdir 내 `agent/C-SWM-DOCKER_EXEC.md` 작성 후 오케스트레이터가 HANELSO로 복사.
 - `run_in_background=true`.

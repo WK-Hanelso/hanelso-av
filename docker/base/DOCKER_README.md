@@ -101,7 +101,7 @@ CUDA/nvidia 패키지 = 없음
 **필요성**: nuplan-devkit는 의존 패키지가 매우 많다(pytest·bokeh·casadi·shapely·geopandas 등 수십 개). 최소 목록으로 시작하면 `ModuleNotFoundError`가 하나씩 터져 빌드를 수십 번 반복하게 된다(실제로 pytest 누락으로 스모크 실패 경험).
 
 **결정**:
-- 이 스택(nuplan+render+sim)의 **완전한 클로저** = 구 검증 freeze(`simulation/docker/requirements.txt`, 241개)를 베이스로 삼는다.
+- 이 스택(nuplan+render+sim)의 **완전한 클로저** = 구 검증 freeze(`simulation/docker/base/requirements.txt`, 241개)를 베이스로 삼는다.
 - 단, 그 freeze는 시스템 파이썬에서 뽑혀 **OS/apt 전용 패키지 6종**(python-apt, distro-info, unattended-upgrades, PyGObject, dbus-python, ssh-import-id)이 섞여 있어 pip 설치가 안 된다 → **제거**(235개).
 - `pip install --no-deps -r requirements.txt` 로 **freeze를 그대로 재현**(resolver 미개입). 이렇게 하면 `cyber-record`가 요구하는 `protobuf<=3.19.4` vs 프로젝트의 `protobuf==3.20.3`(맵 proto 기준) 같은 상한 충돌도 회피된다.
 - torch/torchvision(§5 별도), nuplan(§3 별도)만 freeze에서 빼서 따로 설치.
@@ -129,7 +129,7 @@ python:3.9-slim-bullseye
   → pip install --no-deps "git+…nuplan-devkit.git@e924167"                            (§3)
   → HEALTHCHECK: 설치형 의존성 import                                                  (§8)
 ```
-결과 이미지: `hanelso-swm-env:latest` (CPU 전용, x86-64, ~3.8GB).
+결과 이미지: `swm-base:latest` (CPU 전용, x86-64, ~3.8GB).
 
 ---
 

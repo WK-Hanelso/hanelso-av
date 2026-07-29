@@ -6,7 +6,7 @@ from typing import Dict, Iterable, List, Sequence, Tuple
 
 import numpy as np
 
-from common.input.base import InputBuilder, register_input_builder
+from planning.input.base import InputBuilder, register_input_builder
 
 HIST_STEPS = 21
 DT = 0.1

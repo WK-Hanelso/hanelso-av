@@ -1,10 +1,16 @@
-import importlib.util
+"""parse driver: 원본 record -> work/<clip_id>/parsed (공용 파이프라인, .venv-apollo).
+
+    python parse_clip.py configs/e100bt25.py
+
+root config의 record/source/pose(+선택 keyframe·keyframe_hz)를 읽어 파싱한다.
+"""
+
 from pathlib import Path
-from types import ModuleType
 from typing import List, Optional
 
 import common.io.apollo  # noqa: F401
 import common.io.pose  # noqa: F401
+from common.config import load_config_file, resolve_repo_path
 from common.io.config import ParseConfig
 from common.io.registry import get_parser, get_pose_provider
 
@@ -17,44 +23,28 @@ def _default_clip_id(record_path: str) -> str:
 
 
 def _usage() -> str:
-    return "Usage: python parse_clip.py <config.py>"
-
-
-def _load_config_module(config_path: Path) -> ModuleType:
-    if not config_path.exists():
-        raise FileNotFoundError(f"Config file not found: {config_path}")
-    spec = importlib.util.spec_from_file_location("parse_clip_config", config_path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Failed to load config module from: {config_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def _load_config(config_path_str: str) -> ParseConfig:
-    config_path = Path(config_path_str).resolve()
-    module = _load_config_module(config_path)
-    if not hasattr(module, "config"):
-        raise AttributeError(f"Config module must define `config`: {config_path}")
-    config = module.config
-    if not isinstance(config, ParseConfig):
-        raise TypeError(
-            f"`config` must be an instance of ParseConfig, got {type(config).__name__}: {config_path}"
-        )
-    return config
+    return "Usage: python parse_clip.py <root_config.py>"
 
 
 def main(argv: Optional[List[str]] = None) -> int:
     argv = argv or []
-    if not argv:
-        raise SystemExit(_usage())
     if len(argv) != 1:
-        raise SystemExit(f"{_usage()}\nReceived unexpected arguments: {' '.join(argv)}")
+        raise SystemExit(_usage())
 
-    try:
-        config = _load_config(argv[0])
-    except (AttributeError, FileNotFoundError, ImportError, TypeError) as exc:
-        raise SystemExit(f"Config load error: {exc}")
+    # 파싱은 root 필드만 소비 — 모듈 도메인 해석이 필요 없어 load_config_file 사용
+    # (.venv-apollo에서도 stdlib만으로 동작).
+    cfg = load_config_file(resolve_repo_path(argv[0]))
+    parse_kwargs = {
+        "record": cfg["record"],
+        "source": cfg.get("source", "apollo_record"),
+        "pose": cfg.get("pose", "apollo_record"),
+        "clip_id": cfg.get("clip_id"),
+    }
+    for optional_key in ("out_root", "keyframe", "keyframe_hz"):
+        if optional_key in cfg:
+            parse_kwargs[optional_key] = cfg[optional_key]
+    config = ParseConfig(**parse_kwargs)
+
     clip_id = config.clip_id or _default_clip_id(config.record)
     out_dir = str(Path(config.out_root) / clip_id / "parsed")
     parser_cls = get_parser(config.source)

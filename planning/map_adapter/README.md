@@ -1,6 +1,6 @@
-# common/map
+# planning/map_adapter
 
-`common/map/`은 Apollo HD map 산출물(`work/maps/*/map_graph.json`)을 nuPlan `AbstractMap` 호출 표면으로 연결하는 얇은 duck-type 어댑터를 둔다.
+`planning/map_adapter/`는 Apollo HD map 산출물(`work/maps/*/map_graph.json`)을 nuPlan `AbstractMap` 호출 표면으로 연결하는 얇은 duck-type 어댑터를 둔다.
 
 ## 구성
 

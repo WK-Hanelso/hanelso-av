@@ -12,6 +12,7 @@ hanelso_swm의 모든 도메인(localization·perception·labeling·planning·si
 |---|---|
 | `FORMAT_SPEC.md` | 우리 통합 데이터 포맷 명세 (nuScenes 코어 + VLM 언어 레이어). **운영 문서** — 포맷 SoT. |
 | `io/` | **pluggable 파싱 프레임워크** — 이종 원본을 우리 포맷으로 변환. 아래 참조. |
+| `config.py` | **계층 config 조합 로더** (C-SWM-022). ROOT config(`configs/*.py`)의 모듈 이름을 `<domain>/configs/<이름>.py`로 해석·병합해 최종 config dict 하나를 반환. `_base_` 상속(dict 재귀 병합) 지원. 모든 드라이버는 root config 경로 하나만 받는다. |
 
 ## `io/` — pluggable 파싱 프레임워크
 

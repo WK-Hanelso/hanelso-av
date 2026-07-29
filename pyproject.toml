@@ -20,8 +20,15 @@ dev = ["grpcio-tools==1.43.0"]
 # 시각화 도구(tools/parser_validation BEV 등).
 viz = ["matplotlib"]
 
-# 모노레포: 공용 base 패키지 common(+ 향후 도메인 패키지)만 배포 대상.
+# 모노레포: 공용 base 패키지 common + 도메인 패키지들이 배포 대상.
 # 원본/파생/설정은 패키지 아님.
 [tool.setuptools.packages.find]
-include = ["common*"]
+include = [
+    "common*",
+    "planning*",
+    "simulation*",
+    "calibration*",
+    "localization*",
+    "perception*",
+]
 namespaces = true

@@ -1,13 +1,23 @@
 from __future__ import annotations
 
-import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional, Union
 
 import torch
 import yaml
 
+from planning.pluto_paths import ensure_pluto_on_path
 from .base import Policy, register_policy
+
+
+def _to_cpu(obj: Any) -> Any:
+    if isinstance(obj, torch.Tensor):
+        return obj.detach().cpu()
+    if isinstance(obj, dict):
+        return {key: _to_cpu(value) for key, value in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return type(obj)(_to_cpu(value) for value in obj)
+    return obj
 
 
 class PlutoTorchPolicy(Policy):
@@ -15,19 +25,22 @@ class PlutoTorchPolicy(Policy):
         self,
         config_path: str,
         checkpoint_path: str,
-        pluto_root: str,
+        pluto_root: Optional[Union[str, Path]] = None,
         use_v3_planning_decoder: bool = True,
+        device: str = "cpu",
     ) -> None:
         self.config_path = Path(config_path)
         self.checkpoint_path = Path(checkpoint_path)
-        self.pluto_root = Path(pluto_root)
+        self.pluto_root = ensure_pluto_on_path(pluto_root)
         self.use_v3_planning_decoder = use_v3_planning_decoder
+        self.device = torch.device(device)
+        if self.device.type == "cuda" and not torch.cuda.is_available():
+            raise RuntimeError(
+                "device='cuda' requested but torch.cuda.is_available() is False"
+            )
         self.model, self.model_kwargs, self.load_report = self._load_model()
 
     def _load_model(self):
-        if str(self.pluto_root) not in sys.path:
-            sys.path.insert(0, str(self.pluto_root))
-
         from src.models.pluto.pluto_model import PlanningModel
         from .v3_planning_decoder import PlanningDecoder as V3PlanningDecoder
 
@@ -93,14 +106,19 @@ class PlutoTorchPolicy(Policy):
             }
 
         model.eval()
-        model.cpu()
+        model.to(self.device)
         report["decoder_swap"] = decoder_swap_report
+        report["device"] = str(self.device)
+        report["model_param_device"] = str(next(model.parameters()).device)
         return model, kwargs, report
 
     @torch.inference_mode()
     def infer(self, feature: Any) -> dict[str, Any]:
+        if hasattr(feature, "to_device"):
+            feature = feature.to_device(self.device)
         batch = feature.data if hasattr(feature, "data") else feature
         output = self.model(batch)
+        output = _to_cpu(output)
         return {
             "output_trajectory": output["output_trajectory"],
             "candidate_trajectories": output["candidate_trajectories"],

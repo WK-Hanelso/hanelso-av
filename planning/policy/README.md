@@ -1,6 +1,6 @@
-# common/policy
+# planning/policy
 
-`common/policy/`는 추론 정책을 **ABC + registry**로 갈아끼우는 최소 계층이다.
+`planning/policy/`는 추론 정책을 **ABC + registry**로 갈아끼우는 최소 계층이다.
 
 ## 구성
 
@@ -12,6 +12,6 @@
 
 ## 규약
 
-- depth는 `common/policy/*` 한 단계만 사용한다.
+- depth는 `planning/policy/*` 한 단계만 사용한다.
 - 정책 구현은 입력 feature를 재정의하지 않고, 이미 준비된 batch를 그대로 consume한다.
 - 새 정책은 파일 하단에서 registry 등록까지 끝내야 한다.

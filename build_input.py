@@ -1,9 +1,16 @@
-import importlib.util
+"""input-feed driver: work/<clip>/parsed -> work/<clip>/input (feed.npz + 검증).
+
+    python build_input.py configs/e100bt25.py [--t0-time <sec>]
+
+root config의 modules.planning 모듈 config에서 feed_builder(registry key)를
+읽어 plain numpy feed를 만든다 (모델 feature 조립은 planning/run_inference.py).
+"""
+
+import argparse
 import json
 import math
 import os
 from pathlib import Path
-from types import ModuleType
 from typing import Dict, List, Optional
 
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
@@ -14,37 +21,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-import common.input  # noqa: F401
-from common.input.config import BuildInputConfig
-from common.input.base import get_input_builder
-
-
-def _usage() -> str:
-    return "Usage: python build_input.py <config.py>"
-
-
-def _load_config_module(config_path: Path) -> ModuleType:
-    if not config_path.exists():
-        raise FileNotFoundError(f"Config file not found: {config_path}")
-    spec = importlib.util.spec_from_file_location("build_input_config", config_path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Failed to load config module from: {config_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def _load_config(config_path_str: str) -> BuildInputConfig:
-    config_path = Path(config_path_str).resolve()
-    module = _load_config_module(config_path)
-    if not hasattr(module, "config"):
-        raise AttributeError(f"Config module must define `config`: {config_path}")
-    config = module.config
-    if not isinstance(config, BuildInputConfig):
-        raise TypeError(
-            f"`config` must be an instance of BuildInputConfig, got {type(config).__name__}: {config_path}"
-        )
-    return config
+from common.config import load_config, resolve_repo_path
+import planning.input  # noqa: F401
+from planning.input.base import get_input_builder
 
 
 def _shape_str(array: np.ndarray) -> str:
@@ -305,32 +284,36 @@ def _write_meta(path: Path, context: Dict[str, object], checks: List[Dict[str, o
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    argv = argv or []
-    if len(argv) != 1:
-        raise SystemExit(_usage())
-    try:
-        config = _load_config(argv[0])
-    except (AttributeError, FileNotFoundError, ImportError, TypeError) as exc:
-        raise SystemExit(f"Config load error: {exc}")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("config", help="ROOT config path (configs/*.py)")
+    parser.add_argument("--t0-time", type=float, default=None)
+    args = parser.parse_args(argv)
 
-    clip_id = config.clip_id or Path(config.parsed_dir).resolve().parent.name
-    out_dir = Path(config.out_root) / clip_id
+    cfg = load_config(args.config)
+    plan_cfg = cfg.get("planning")
+    if plan_cfg is None:
+        raise SystemExit(f"root config {args.config} has no planning module")
+
+    clip_id = cfg["clip_id"]
+    parsed_dir = str(resolve_repo_path(f"work/{clip_id}/parsed"))
+    map_path = str(resolve_repo_path(cfg["map_path"]))
+    out_dir = resolve_repo_path(f"work/{clip_id}/input")
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    map_graph = json.loads(Path(config.map_path).read_text())
-    builder_cls = get_input_builder(config.builder)
+    map_graph = json.loads(Path(map_path).read_text())
+    builder_cls = get_input_builder(plan_cfg.get("feed_builder", "pluto"))
     builder = builder_cls()
     build_dict = {
         "clip_id": clip_id,
-        "map_name": config.map_name,
-        "vehicle": config.vehicle,
+        "map_name": cfg["map_name"],
+        "vehicle": cfg.get("vehicle", "pacifica"),
     }
-    feed = builder.build(config.parsed_dir, map_graph, config.t0_time, build_dict)
+    feed = builder.build(parsed_dir, map_graph, args.t0_time, build_dict)
     context = dict(builder.last_context)
     context["clip_id"] = clip_id
-    context["parsed_dir"] = config.parsed_dir
-    context["map_path"] = config.map_path
-    context["map_name"] = config.map_name or context.get("map_name") or ""
+    context["parsed_dir"] = parsed_dir
+    context["map_path"] = map_path
+    context["map_name"] = cfg["map_name"] or context.get("map_name") or ""
 
     checks = _run_checks(feed, context)
 

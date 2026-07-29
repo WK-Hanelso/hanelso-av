@@ -18,11 +18,12 @@ pipeline matches the original PlutoPlanner._run_planning_once.
 
 from __future__ import annotations
 
-import sys
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 from scipy.special import softmax
+
+from planning.pluto_paths import ensure_pluto_on_path
 
 
 class PlutoPostProcessor:
@@ -31,14 +32,13 @@ class PlutoPostProcessor:
 
     def __init__(
         self,
-        pluto_root: str,
+        pluto_root: Optional[str] = None,
         candidate_max_num: int = 20,
         learning_based_score_weight: float = 0.25,
         eval_dt: float = 0.1,
         eval_num_frames: int = 80,
     ) -> None:
-        if str(pluto_root) not in sys.path:
-            sys.path.insert(0, str(pluto_root))
+        ensure_pluto_on_path(pluto_root)
 
         from src.post_processing.emergency_brake import EmergencyBrake
         from src.post_processing.trajectory_evaluator import TrajectoryEvaluator

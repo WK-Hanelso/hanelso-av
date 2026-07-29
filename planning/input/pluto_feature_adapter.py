@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from common.input.pluto import (
+from planning.input.pluto import (
     CATEGORY_CODES,
     DT,
     HIST_STEPS,
@@ -54,24 +54,18 @@ class AdapterBuildResult:
 
 
 class ApolloPlutoFeatureAdapter:
-    def __init__(self, pluto_root: str) -> None:
+    def __init__(self, pluto_root: Optional[str] = None) -> None:
+        from planning.pluto_paths import ensure_pluto_on_path
+
         self._builder = PlutoInputBuilder()
-        self._pluto_root = Path(pluto_root)
+        self._pluto_root = ensure_pluto_on_path(pluto_root)
 
     def _import_pluto_feature(self):
-        import sys
-
-        if str(self._pluto_root) not in sys.path:
-            sys.path.insert(0, str(self._pluto_root))
         from src.features.pluto_feature import PlutoFeature
 
         return PlutoFeature
 
     def _import_scenario_manager(self):
-        import sys
-
-        if str(self._pluto_root) not in sys.path:
-            sys.path.insert(0, str(self._pluto_root))
         from src.scenario_manager.scenario_manager import ScenarioManager
 
         return ScenarioManager
@@ -144,7 +138,7 @@ class ApolloPlutoFeatureAdapter:
         config: dict,
     ) -> Dict[str, Any]:
         """Loads per-clip inputs once so build_frame() can run per frame."""
-        from common.map.apollo_map import ApolloMap
+        from planning.map_adapter.apollo_map import ApolloMap
 
         parsed_path = Path(parsed_dir)
         tables = self._builder._load_tables(parsed_path)
@@ -509,7 +503,7 @@ class ApolloPlutoFeatureAdapter:
         candidate-pruning step). The original ScenarioManager output is
         authoritative.
         """
-        from common.map.apollo_map import ApolloMap
+        from planning.map_adapter.apollo_map import ApolloMap
 
         ScenarioManager = self._import_scenario_manager()
 
@@ -986,3 +980,8 @@ class ApolloPlutoFeatureAdapter:
             pos = max(0, min(pos, len(headings) - 1))
             out[idx] = headings[pos]
         return out
+
+
+from planning.input.base import register_feature_adapter
+
+register_feature_adapter("pluto_feature", ApolloPlutoFeatureAdapter)

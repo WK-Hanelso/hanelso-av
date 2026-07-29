@@ -1,9 +1,20 @@
+"""planning inference driver (C-SWM-022): root config 하나로 조립·실행.
+
+    python planning/run_inference.py configs/e100bt25.py [--device cuda]
+
+root config의 modules.planning 이름이 planning/configs/<이름>.py로 해석되고,
+policy/input_builder는 registry 문자열로 조립된다.  모델 아티팩트는 bundle
+(native config + checkpoint 쌍)에서 경로 참조로 읽는다.
+출력: work/<clip_id>/inference/{outputs.npz, infer_report.txt, infer_bev.png}.
+"""
+
 from __future__ import annotations
 
 import argparse
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict
 
@@ -16,40 +27,54 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-REPO_ROOT = Path(__file__).resolve().parent
+REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from common.input.pluto_feature_adapter import ApolloPlutoFeatureAdapter
-from common.policy import get_policy
-import common.policy.pluto_torch  # noqa: F401
+from common.config import load_config, resolve_repo_path
+import planning.input  # noqa: F401  (registers input builders / feature adapters)
+from planning.input.base import get_feature_adapter
+from planning.policy import get_policy
+import planning.policy.pluto_torch  # noqa: F401  (registers pluto_torch)
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--parsed-dir", required=True)
-    parser.add_argument("--map-path", required=True)
-    parser.add_argument("--map-name", required=True)
-    parser.add_argument("--clip-id", default=None)
-    parser.add_argument("--vehicle", default="pacifica")
-    parser.add_argument("--t0-time", type=float, default=None)
-    parser.add_argument("--policy", default="pluto_torch")
-    parser.add_argument("--config-path", default="code/hydra/config.yaml")
-    parser.add_argument("--checkpoint-path", default="data/model/v3_pluto.ckpt")
-    parser.add_argument("--pluto-root", default=str(REPO_ROOT / "third_party" / "pluto"))
-    parser.add_argument("--out-root", default="work/inference")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("config", help="ROOT config path (configs/*.py)")
     parser.add_argument(
-        "--use-v3-planning-decoder",
-        action=argparse.BooleanOptionalAction,
-        default=True,
+        "--device",
+        default=None,
+        help="override planning.device (cpu|cuda). default: planning module config",
     )
+    parser.add_argument("--t0-time", type=float, default=None)
     parser.add_argument(
-        "--postprocess",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Run the original pluto TrajectoryEvaluator/EmergencyBrake post-processing.",
+        "--out-dir",
+        default=None,
+        help="override output dir (default: work/<clip_id>/inference)",
     )
     return parser.parse_args()
+
+
+def measure_forward_latency(policy, feature, repeats: int = 3) -> Dict[str, Any]:
+    """Mean wall latency of policy.infer after one warmup (cuda-synchronized)."""
+    is_cuda = getattr(policy, "device", torch.device("cpu")).type == "cuda"
+    with torch.inference_mode():
+        policy.infer(feature)  # warmup (cudnn autotune / lazy init)
+        if is_cuda:
+            torch.cuda.synchronize()
+        times = []
+        for _ in range(repeats):
+            begin = time.perf_counter()
+            policy.infer(feature)
+            if is_cuda:
+                torch.cuda.synchronize()
+            times.append(time.perf_counter() - begin)
+    return {
+        "repeats": repeats,
+        "mean_sec": float(np.mean(times)),
+        "min_sec": float(np.min(times)),
+        "max_sec": float(np.max(times)),
+    }
 
 
 def build_render(
@@ -211,21 +236,12 @@ def run_checks(normalized_data: Dict[str, Any], output: Dict[str, Any]) -> Dict[
 
 def compare_decoders(
     feature: Any,
-    args: argparse.Namespace,
+    policy_name: str,
+    policy_kwargs: Dict[str, Any],
 ) -> Dict[str, Any]:
-    policy_cls = get_policy(args.policy)
-    original_policy = policy_cls(
-        config_path=args.config_path,
-        checkpoint_path=args.checkpoint_path,
-        pluto_root=args.pluto_root,
-        use_v3_planning_decoder=False,
-    )
-    v3_policy = policy_cls(
-        config_path=args.config_path,
-        checkpoint_path=args.checkpoint_path,
-        pluto_root=args.pluto_root,
-        use_v3_planning_decoder=True,
-    )
+    policy_cls = get_policy(policy_name)
+    original_policy = policy_cls(**{**policy_kwargs, "use_v3_planning_decoder": False})
+    v3_policy = policy_cls(**{**policy_kwargs, "use_v3_planning_decoder": True})
     with torch.inference_mode():
         original_output = original_policy.infer(feature)["raw_output"]
         v3_output = v3_policy.infer(feature)["raw_output"]
@@ -296,20 +312,34 @@ def run_postprocess_checks(post_result: Dict[str, Any]) -> Dict[str, Any]:
 
 def main() -> int:
     args = parse_args()
-    parsed_dir = Path(args.parsed_dir)
-    out_dir = Path(args.out_root) / (args.clip_id or parsed_dir.parent.name)
+    cfg = load_config(args.config)
+    plan_cfg = cfg.get("planning")
+    if plan_cfg is None:
+        raise SystemExit(
+            f"root config {args.config} has no planning module "
+            "(modules.planning is None)"
+        )
+
+    clip_id = cfg["clip_id"]
+    parsed_dir = resolve_repo_path(f"work/{clip_id}/parsed")
+    out_dir = (
+        Path(args.out_dir)
+        if args.out_dir
+        else resolve_repo_path(f"work/{clip_id}/inference")
+    )
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    with open(args.map_path) as f:
+    with open(resolve_repo_path(cfg["map_path"])) as f:
         map_graph = json.load(f)
 
     config = {
-        "clip_id": args.clip_id or parsed_dir.parent.name,
-        "map_name": args.map_name,
-        "vehicle": args.vehicle,
+        "clip_id": clip_id,
+        "map_name": cfg["map_name"],
+        "vehicle": cfg.get("vehicle", "pacifica"),
     }
 
-    adapter = ApolloPlutoFeatureAdapter(args.pluto_root)
+    adapter_cls = get_feature_adapter(plan_cfg["input_builder"])
+    adapter = adapter_cls()
     build_result = adapter.build(
         parsed_dir=str(parsed_dir),
         map_graph=map_graph,
@@ -317,21 +347,25 @@ def main() -> int:
         t0_time=args.t0_time,
     )
 
-    policy_cls = get_policy(args.policy)
-    policy = policy_cls(
-        config_path=args.config_path,
-        checkpoint_path=args.checkpoint_path,
-        pluto_root=args.pluto_root,
-        use_v3_planning_decoder=args.use_v3_planning_decoder,
-    )
+    bundle = resolve_repo_path(plan_cfg["bundle"])
+    device = args.device or plan_cfg.get("device", "cpu")
+    policy_kwargs = {
+        "config_path": str(bundle / plan_cfg["model_config"]),
+        "checkpoint_path": str(bundle / plan_cfg["checkpoint"]),
+        "use_v3_planning_decoder": plan_cfg.get("use_v3_planning_decoder", True),
+        "device": device,
+    }
+    policy_cls = get_policy(plan_cfg["policy"])
+    policy = policy_cls(**policy_kwargs)
     with torch.inference_mode():
         output = policy.infer(build_result.feature)
+    forward_latency = measure_forward_latency(policy, build_result.feature)
 
     post_result = None
-    if args.postprocess:
-        from common.policy.pluto_postprocess import PlutoPostProcessor
+    if plan_cfg.get("postprocess", {}).get("enabled", True):
+        from planning.policy.pluto_postprocess import PlutoPostProcessor
 
-        postprocessor = PlutoPostProcessor(pluto_root=args.pluto_root)
+        postprocessor = PlutoPostProcessor()
         post_result = postprocessor.run(
             model_output=output["raw_output"],
             normalized_data=build_result.normalized_numpy_data,
@@ -368,12 +402,19 @@ def main() -> int:
     checks = run_checks(build_result.normalized_numpy_data, output["raw_output"])
     if post_result is not None:
         checks.update(run_postprocess_checks(post_result))
-    decoder_comparison = compare_decoders(build_result.feature, args)
+    decoder_comparison = compare_decoders(
+        build_result.feature, plan_cfg["policy"], policy_kwargs
+    )
     report = {
         "clip_id": config["clip_id"],
+        "root_config": str(Path(args.config).resolve()),
         "parsed_dir": str(parsed_dir),
-        "map_path": str(Path(args.map_path).resolve()),
-        "policy": args.policy,
+        "map_path": str(resolve_repo_path(cfg["map_path"])),
+        "policy": plan_cfg["policy"],
+        "bundle": str(bundle),
+        "device": device,
+        "model_param_device": policy.load_report["model_param_device"],
+        "forward_latency": forward_latency,
         "decoder": policy.load_report["decoder_swap"]["decoder"],
         "model_kwargs": policy.model_kwargs,
         "model_load_report": policy.load_report,

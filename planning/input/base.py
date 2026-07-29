@@ -31,3 +31,22 @@ def get_input_builder(name: str) -> Type[InputBuilder]:
             f"Unknown input builder '{name}'. Available: {sorted(_BUILDERS)}"
         )
     return _BUILDERS[name]
+
+
+# Feature adapters: model-facing builders that produce a ready feature object
+# (e.g. a collated PlutoFeature) plus scene context, as opposed to the plain
+# numpy feed dict of InputBuilder.  Module configs reference these by name
+# (planning/configs/pluto.py: input_builder="pluto_feature").
+_FEATURE_ADAPTERS: Dict[str, type] = {}
+
+
+def register_feature_adapter(name: str, adapter_cls: type) -> None:
+    _FEATURE_ADAPTERS[name] = adapter_cls
+
+
+def get_feature_adapter(name: str) -> type:
+    if name not in _FEATURE_ADAPTERS:
+        raise KeyError(
+            f"Unknown feature adapter '{name}'. Available: {sorted(_FEATURE_ADAPTERS)}"
+        )
+    return _FEATURE_ADAPTERS[name]
