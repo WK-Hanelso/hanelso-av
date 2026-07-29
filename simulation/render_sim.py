@@ -15,8 +15,21 @@ closed_loop : ego is driven by the model.  Each step builds a feature from the
                   matched = prog_j + argmin ||log_ego[prog_j:prog_j+W] - sim_ego||
                   prog_j  = max(matched, prog_j + 1)
 
-Outputs: work/sim/<clip>/<mode>/frame_%05d.png + work/sim/<clip>/<mode>.mp4
-         + <mode>_metrics.json (per-step metrics, divergence, collisions).
+Renderers (C-SWM-019)
+---------------------
+matplotlib : our BEVRenderer (default, unchanged).
+nuplan     : the ORIGINAL pluto NuplanScenarioRender (official style).  Every
+             frame assembles a real PlannerInput (SimulationHistoryBuffer from
+             our ego/detection history + traffic_light_data) and a
+             PlannerInitialization (map_api=ApolloMap, route_roadblock_ids,
+             mission_goal=route.json destination_xy), injects our
+             ScenarioManager, and calls render_from_simulation with the
+             post-processor best trajectory / candidates / predictions in the
+             ego-local frame exactly like PlutoPlanner._run_planning_once.
+
+Outputs: work/sim/<clip>/<mode>[_nuplan]/frame_%05d.png
+         + work/sim/<clip>/<mode>[_nuplan].mp4
+         + <mode>[_nuplan]_metrics.json (per-step metrics, divergence, collisions).
 
 Run with system python3 (torch 1.12 + natten + nuplan + shapely).
 """
@@ -308,6 +321,136 @@ class BEVRenderer:
         plt.close(fig)
 
 
+# ----------------------------------------------- official nuplan renderer
+
+
+class NuplanOfficialRenderer:
+    """Drives the ORIGINAL pluto NuplanScenarioRender (C-SWM-019).
+
+    Per frame:
+    - PlannerInput: SimulationHistoryBuffer accumulated from OUR EgoState /
+      DetectionsTracks history (log ego in open_loop, sim ego in closed_loop;
+      the renderer reads history[-1], the trail is kept internally) +
+      traffic_light_data from scene_context (empty for Apollo clips).
+    - PlannerInitialization: map_api=ApolloMap, route_roadblock_ids from our
+      ScenarioManager, mission_goal=StateSE2(route.json destination_xy).
+    - renderer.scenario_manager is re-injected with the adapter-built
+      ScenarioManager, so `need_update` stays False and the original
+      reference-line/route surfaces are reused as-is.
+    """
+
+    def __init__(
+        self,
+        mission_goal_xy,
+        sample_interval: float,
+        history_size: int = HIST_STEPS,
+    ) -> None:
+        from nuplan.common.actor_state.state_representation import StateSE2
+        from src.feature_builders.nuplan_scenario_render import NuplanScenarioRender
+
+        if mission_goal_xy is None:
+            raise ValueError(
+                "route.json has no destination_xy: NuplanScenarioRender plots "
+                "mission_goal unconditionally, so it cannot be None."
+            )
+        self._mission_goal = StateSE2(
+            float(mission_goal_xy[0]), float(mission_goal_xy[1]), 0.0
+        )
+        self._sample_interval = float(sample_interval)
+        self._history_size = int(history_size)
+        self._renderer = NuplanScenarioRender()
+        self._ego_history: List[Any] = []
+        self._obs_history: List[Any] = []
+
+    def render_frame(
+        self,
+        out_path: Path,
+        scene_context: Dict[str, Any],
+        iteration_index: int,
+        planning_local: Optional[np.ndarray] = None,
+        candidates_local: Optional[np.ndarray] = None,
+        predictions: Optional[np.ndarray] = None,
+        candidate_index: Optional[int] = None,
+    ) -> None:
+        from nuplan.planning.simulation.history.simulation_history_buffer import (
+            SimulationHistoryBuffer,
+        )
+        from nuplan.planning.simulation.planner.abstract_planner import (
+            PlannerInitialization,
+            PlannerInput,
+        )
+        from nuplan.planning.simulation.simulation_time_controller.simulation_iteration import (
+            SimulationIteration,
+        )
+
+        ego_state = scene_context["ego_state"]
+        self._ego_history = (self._ego_history + [ego_state])[-self._history_size :]
+        self._obs_history = (self._obs_history + [scene_context["detections"]])[
+            -self._history_size :
+        ]
+
+        history = SimulationHistoryBuffer.initialize_from_list(
+            buffer_size=len(self._ego_history),
+            ego_states=list(self._ego_history),
+            observations=list(self._obs_history),
+            sample_interval=self._sample_interval,
+        )
+        current_input = PlannerInput(
+            iteration=SimulationIteration(ego_state.time_point, int(iteration_index)),
+            history=history,
+            traffic_light_data=list(scene_context["traffic_light_data"]),
+        )
+        scenario_manager = scene_context["scenario_manager"]
+        route_roadblock_ids = scenario_manager.get_route_roadblock_ids()
+        initialization = PlannerInitialization(
+            route_roadblock_ids=route_roadblock_ids,
+            mission_goal=self._mission_goal,
+            map_api=scene_context["map_api"],
+        )
+        self._renderer.scenario_manager = scenario_manager
+
+        img = self._renderer.render_from_simulation(
+            current_input=current_input,
+            initialization=initialization,
+            route_roadblock_ids=route_roadblock_ids,
+            planning_trajectory=planning_local,
+            candidate_trajectories=candidates_local,
+            predictions=predictions,
+            candidate_index=candidate_index,
+            return_img=True,
+        )
+        plt.imsave(out_path, img)
+
+
+def nuplan_overlays(post, output, build):
+    """(planning_local, candidates_local, predictions, candidate_index) in the
+    ego-local frame, mirroring the PlutoPlanner render call: best trajectory +
+    candidates with rule_based_score > 0 (global -> local) + raw model
+    predictions for the valid agent rows."""
+    ego_state = build.scene_context["ego_state"]
+    if post is not None:
+        planning_local = np.asarray(post["best_trajectory_local"], dtype=np.float64)
+        keep = np.asarray(post["rule_based_scores"]) > 0
+        candidates = np.asarray(
+            post["candidate_trajectories_global"], dtype=np.float64
+        )[keep]
+        candidates_local = (
+            PlutoPostProcessor._global_to_local(candidates, ego_state)
+            if len(candidates)
+            else None
+        )
+        candidate_index = int(post["best_candidate_idx"])
+    else:
+        planning_local = output["output_trajectory"].detach().cpu().numpy()[0]
+        candidates_local = None
+        candidate_index = None
+
+    rows = np.asarray(build.scene_context["agent_rows"], dtype=np.int64) - 1
+    preds_all = output["raw_output"]["output_prediction"].detach().cpu().numpy()[0]
+    predictions = preds_all[rows] if len(rows) else None
+    return planning_local, candidates_local, predictions, candidate_index
+
+
 # ------------------------------------------------------------ ego dynamics
 
 
@@ -361,11 +504,12 @@ def check_collision(ego_pose: np.ndarray, ego_dims: np.ndarray, rear_axle_to_cen
 # ---------------------------------------------------------------- pipelines
 
 
-def run_open_loop(args, adapter, clip, policy, postprocessor, renderer, out_dir: Path) -> Dict[str, Any]:
+def run_open_loop(args, adapter, clip, policy, postprocessor, renderer, out_dir: Path, official=None) -> Dict[str, Any]:
     dataset = clip["dataset"]
     n_samples = len(dataset["sample_tokens"])
     ego_dims = np.asarray(dataset["ego_dims"], dtype=np.float64)  # (width, length)
-    frames_dir = out_dir / "open_loop"
+    mode_name = "open_loop_nuplan" if official is not None else "open_loop"
+    frames_dir = out_dir / mode_name
     frames_dir.mkdir(parents=True, exist_ok=True)
 
     start = args.start_index if args.start_index is not None else HIST_STEPS - 1
@@ -401,22 +545,36 @@ def run_open_loop(args, adapter, clip, policy, postprocessor, renderer, out_dir:
         agents = frame_agents(dataset, t0_idx, ego_pose[:2], renderer.view_radius * 1.5)
         speed = float(dataset["ego_speed"][t0_idx])
         t_sec = dataset["sample_ts_sec"][t0_idx] - dataset["sample_ts_sec"][0]
-        renderer.render(
-            frames_dir / f"frame_{frame_no:05d}.png",
-            ego_pose=ego_pose,
-            ego_dims=ego_dims,
-            agents=agents,
-            reference_lines=build.scene_context["reference_lines_global"],
-            raw_traj_global=raw_global,
-            best_traj_global=best_global,
-            title=f"{clip['config'].get('clip_id', '')} open_loop (ego=log GT)",
-            info_lines=[
-                f"frame {frame_no:4d}  log_idx {t0_idx:4d}  t={t_sec:6.1f}s",
-                f"ego speed {speed:5.2f} m/s  agents {len(agents):2d}",
-                f"emergency_brake={emergency}",
-            ],
-            emergency=emergency,
-        )
+        if official is not None:
+            planning_local, candidates_local, predictions, candidate_index = (
+                nuplan_overlays(post, output, build)
+            )
+            official.render_frame(
+                frames_dir / f"frame_{frame_no:05d}.png",
+                scene_context=build.scene_context,
+                iteration_index=frame_no,
+                planning_local=planning_local,
+                candidates_local=candidates_local,
+                predictions=predictions,
+                candidate_index=candidate_index,
+            )
+        else:
+            renderer.render(
+                frames_dir / f"frame_{frame_no:05d}.png",
+                ego_pose=ego_pose,
+                ego_dims=ego_dims,
+                agents=agents,
+                reference_lines=build.scene_context["reference_lines_global"],
+                raw_traj_global=raw_global,
+                best_traj_global=best_global,
+                title=f"{clip['config'].get('clip_id', '')} open_loop (ego=log GT)",
+                info_lines=[
+                    f"frame {frame_no:4d}  log_idx {t0_idx:4d}  t={t_sec:6.1f}s",
+                    f"ego speed {speed:5.2f} m/s  agents {len(agents):2d}",
+                    f"emergency_brake={emergency}",
+                ],
+                emergency=emergency,
+            )
         records.append(
             {
                 "frame": frame_no,
@@ -435,17 +593,18 @@ def run_open_loop(args, adapter, clip, policy, postprocessor, renderer, out_dir:
         )
 
     fps = args.fps or max(1, round(10 / args.stride))
-    mp4 = make_mp4(frames_dir, out_dir / "open_loop.mp4", fps)
-    return {"mode": "open_loop", "num_frames": len(indices), "fps": fps, "mp4": mp4, "frames": records}
+    mp4 = make_mp4(frames_dir, out_dir / f"{mode_name}.mp4", fps)
+    return {"mode": mode_name, "num_frames": len(indices), "fps": fps, "mp4": mp4, "frames": records}
 
 
-def run_closed_loop(args, adapter, clip, policy, postprocessor, renderer, out_dir: Path) -> Dict[str, Any]:
+def run_closed_loop(args, adapter, clip, policy, postprocessor, renderer, out_dir: Path, official=None) -> Dict[str, Any]:
     from src.post_processing.forward_simulation.forward_simulator import ForwardSimulator
 
     dataset = clip["dataset"]
     n_samples = len(dataset["sample_tokens"])
     ego_dims = np.asarray(dataset["ego_dims"], dtype=np.float64)
-    frames_dir = out_dir / "closed_loop"
+    mode_name = "closed_loop_nuplan" if official is not None else "closed_loop"
+    frames_dir = out_dir / mode_name
     frames_dir.mkdir(parents=True, exist_ok=True)
 
     start = args.start_index if args.start_index is not None else HIST_STEPS - 1
@@ -521,6 +680,22 @@ def run_closed_loop(args, adapter, clip, policy, postprocessor, renderer, out_di
         best_global = np.asarray(post["best_trajectory_global"], dtype=np.float64)
         emergency = bool(post["emergency_brake"])
 
+        # official renderer draws at decision time (pre-step ego), exactly
+        # like PlutoPlanner renders inside compute_planner_trajectory.
+        if official is not None:
+            planning_local, candidates_local, predictions, candidate_index = (
+                nuplan_overlays(post, output, build)
+            )
+            official.render_frame(
+                frames_dir / f"frame_{step:05d}.png",
+                scene_context=build.scene_context,
+                iteration_index=step,
+                planning_local=planning_local,
+                candidates_local=candidates_local,
+                predictions=predictions,
+                candidate_index=candidate_index,
+            )
+
         # --- propagate ego 1 step with the original ForwardSimulator
         candidate = np.concatenate([pose[None, :], best_global[:, :3]], axis=0)
         if len(candidate) < 81:
@@ -576,31 +751,32 @@ def run_closed_loop(args, adapter, clip, policy, postprocessor, renderer, out_di
             }
         )
 
-        renderer.render(
-            frames_dir / f"frame_{step:05d}.png",
-            ego_pose=new_pose,
-            ego_dims=ego_dims,
-            agents=agents,
-            reference_lines=build.scene_context["reference_lines_global"],
-            raw_traj_global=None,
-            best_traj_global=best_global,
-            log_ego_pose=np.array(
-                [
-                    dataset["ego_positions"][prog_j][0],
-                    dataset["ego_positions"][prog_j][1],
-                    dataset["ego_headings"][prog_j],
-                ]
-            ),
-            sim_trace=np.asarray(sim_trace),
-            title=f"{clip['config'].get('clip_id', '')} closed_loop (ego=model)",
-            info_lines=[
-                f"step {step:4d}  prog_j {prog_j:4d}/{n_samples}",
-                f"speed {new_speed:5.2f} m/s  step {step_disp:5.3f} m",
-                f"div(time) {div_time:6.2f} m  div(prog) {div_prog:6.2f} m",
-                f"in_drivable={in_drivable}  ebrake={emergency}  coll={len(hits)}",
-            ],
-            emergency=emergency,
-        )
+        if official is None:
+            renderer.render(
+                frames_dir / f"frame_{step:05d}.png",
+                ego_pose=new_pose,
+                ego_dims=ego_dims,
+                agents=agents,
+                reference_lines=build.scene_context["reference_lines_global"],
+                raw_traj_global=None,
+                best_traj_global=best_global,
+                log_ego_pose=np.array(
+                    [
+                        dataset["ego_positions"][prog_j][0],
+                        dataset["ego_positions"][prog_j][1],
+                        dataset["ego_headings"][prog_j],
+                    ]
+                ),
+                sim_trace=np.asarray(sim_trace),
+                title=f"{clip['config'].get('clip_id', '')} closed_loop (ego=model)",
+                info_lines=[
+                    f"step {step:4d}  prog_j {prog_j:4d}/{n_samples}",
+                    f"speed {new_speed:5.2f} m/s  step {step_disp:5.3f} m",
+                    f"div(time) {div_time:6.2f} m  div(prog) {div_prog:6.2f} m",
+                    f"in_drivable={in_drivable}  ebrake={emergency}  coll={len(hits)}",
+                ],
+                emergency=emergency,
+            )
         print(
             f"[closed_loop] step {step + 1}/{args.steps} prog_j={prog_j} "
             f"speed={new_speed:.2f} step={step_disp:.3f}m div_t={div_time:.2f}m "
@@ -610,7 +786,7 @@ def run_closed_loop(args, adapter, clip, policy, postprocessor, renderer, out_di
         )
 
     fps = args.fps or 10
-    mp4 = make_mp4(frames_dir, out_dir / "closed_loop.mp4", fps)
+    mp4 = make_mp4(frames_dir, out_dir / f"{mode_name}.mp4", fps)
 
     step_disps = np.array([r["step_disp_m"] for r in records])
     summary = {
@@ -626,7 +802,7 @@ def run_closed_loop(args, adapter, clip, policy, postprocessor, renderer, out_di
         "num_collision_steps": len(collisions_total),
     }
     return {
-        "mode": "closed_loop",
+        "mode": mode_name,
         "num_frames": len(records),
         "fps": fps,
         "mp4": mp4,
@@ -641,6 +817,12 @@ def run_closed_loop(args, adapter, clip, policy, postprocessor, renderer, out_di
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", required=True, choices=["open_loop", "closed_loop"])
+    parser.add_argument(
+        "--renderer",
+        default="matplotlib",
+        choices=["matplotlib", "nuplan"],
+        help="matplotlib: our BEVRenderer (default). nuplan: original pluto NuplanScenarioRender (official style).",
+    )
     parser.add_argument("--parsed-dir", required=True)
     parser.add_argument("--map-path", required=True)
     parser.add_argument("--map-name", required=True)
@@ -695,14 +877,22 @@ def main() -> int:
         rear_axle_to_center=float(get_pacifica_parameters().rear_axle_to_center),
     )
 
+    official = None
+    if args.renderer == "nuplan":
+        sample_interval = DT * args.stride if args.mode == "open_loop" else DT
+        official = NuplanOfficialRenderer(
+            mission_goal_xy=clip["route_payload"].get("destination_xy"),
+            sample_interval=sample_interval,
+        )
+
     if args.mode == "open_loop":
-        result = run_open_loop(args, adapter, clip, policy, postprocessor, renderer, out_dir)
+        result = run_open_loop(args, adapter, clip, policy, postprocessor, renderer, out_dir, official=official)
     else:
-        result = run_closed_loop(args, adapter, clip, policy, postprocessor, renderer, out_dir)
+        result = run_closed_loop(args, adapter, clip, policy, postprocessor, renderer, out_dir, official=official)
 
     result["clip_id"] = clip_id
     result["args"] = {k: str(v) for k, v in vars(args).items()}
-    metrics_path = out_dir / f"{args.mode}_metrics.json"
+    metrics_path = out_dir / f"{result['mode']}_metrics.json"
     metrics_path.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n")
     print(json.dumps({k: v for k, v in result.items() if k not in ("frames", "steps")}, indent=2, ensure_ascii=False))
     print(f"metrics: {metrics_path.resolve()}")
