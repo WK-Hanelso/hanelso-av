@@ -26,6 +26,10 @@ from .occupancy_map import OccupancyMap
 from .utils.dijkstra import Dijkstra
 from .utils.route_utils import normalize_angle, route_roadblock_correction
 
+_REFERENCE_LINE_MIN_COMPLETION_RATIO = 0.8
+_ROUTE_REJOIN_MAX_DISTANCE_M = 4.0
+_ROUTE_REJOIN_MAX_HEADING_ERROR_RAD = np.deg2rad(20.0)
+
 
 class RouteManager:
     def __init__(
@@ -188,9 +192,105 @@ class RouteManager:
             for lane in lane_list:
                 discrete_path.extend(lane.baseline_path.discrete_path)
                 length += lane.baseline_path.length
+            if length < _REFERENCE_LINE_MIN_COMPLETION_RATIO * maximum_length:
+                recovered_path = self._recover_short_candidate_route(
+                    lane_list, discrete_path, maximum_length
+                )
+                if recovered_path is not None:
+                    discrete_path = recovered_path
             candidate_discrete_path.append(discrete_path)
 
         return candidate_discrete_path
+
+    def _recover_short_candidate_route(
+        self,
+        lane_list: List[LaneGraphEdgeMapObject],
+        discrete_path: List[StateSE2],
+        maximum_length: float,
+    ) -> Optional[List[StateSE2]]:
+        """Extend a short candidate route by rejoining a nearby on-route lane.
+
+        This keeps the reference line anchored to the ego's current lane while
+        preserving the existing "map + route only" rule: recovery uses only the
+        current terminal pose and the routed lane graph, never future ego poses.
+        """
+        if not lane_list or not discrete_path:
+            return None
+
+        current_length = self._discrete_path_length(discrete_path)
+        required_length = _REFERENCE_LINE_MIN_COMPLETION_RATIO * maximum_length
+        if current_length >= required_length:
+            return None
+
+        terminal_pose = discrete_path[-1]
+        terminal_xy = np.array([terminal_pose.x, terminal_pose.y], dtype=np.float64)
+        terminal_heading = float(terminal_pose.heading)
+        visited_lane_ids = {lane.id for lane in lane_list}
+        route_roadblock_ids = list(self._route_roadblock_dict.keys())
+        terminal_rb_idx = np.argmax(
+            np.array(route_roadblock_ids) == lane_list[-1].get_roadblock_id()
+        )
+
+        best_rejoin: Optional[List[StateSE2]] = None
+        best_score: Optional[Tuple[float, float, int]] = None
+
+        for route_lane in self._route_lane_dict.values():
+            if route_lane.id in visited_lane_ids:
+                continue
+
+            route_rb_idx = np.argmax(
+                np.array(route_roadblock_ids) == route_lane.get_roadblock_id()
+            )
+            if route_rb_idx < terminal_rb_idx:
+                continue
+
+            forward_path = self._route_graph_search(route_lane)
+            if not forward_path:
+                continue
+
+            np_forward = np.array(
+                [[pose.x, pose.y, pose.heading] for pose in forward_path],
+                dtype=np.float64,
+            )
+            distances = np.linalg.norm(np_forward[:, :2] - terminal_xy[None, :], axis=1)
+            closest_idx = int(np.argmin(distances))
+            gap_m = float(distances[closest_idx])
+            if gap_m > _ROUTE_REJOIN_MAX_DISTANCE_M:
+                continue
+
+            heading_error = float(
+                np.abs(
+                    normalize_angle(np_forward[closest_idx, 2] - terminal_heading)
+                )
+            )
+            if heading_error > _ROUTE_REJOIN_MAX_HEADING_ERROR_RAD:
+                continue
+
+            remaining_path = forward_path[closest_idx:]
+            total_length = (
+                current_length
+                + gap_m
+                + self._discrete_path_length(remaining_path)
+            )
+            if total_length < required_length:
+                continue
+
+            score = (gap_m, heading_error, route_rb_idx)
+            if best_score is None or score < best_score:
+                best_score = score
+                best_rejoin = remaining_path
+
+        if best_rejoin is None:
+            return None
+
+        recovered_path = list(discrete_path)
+        if (
+            recovered_path[-1].x != best_rejoin[0].x
+            or recovered_path[-1].y != best_rejoin[0].y
+        ):
+            recovered_path.append(best_rejoin[0])
+        recovered_path.extend(best_rejoin[1:])
+        return recovered_path
 
     def _route_graph_search(self, lane: LaneGraphEdgeMapObject, search_depth=15):
         if lane is None:
@@ -348,3 +448,10 @@ class RouteManager:
             normalize_angle(closest_point[2] - ego_state.rear_axle.heading)
         )
         return angle_error
+
+    @staticmethod
+    def _discrete_path_length(discrete_path: List[StateSE2]) -> float:
+        if len(discrete_path) < 2:
+            return 0.0
+        np_path = np.array([[pose.x, pose.y] for pose in discrete_path], dtype=np.float64)
+        return float(np.linalg.norm(np.diff(np_path, axis=0), axis=1).sum())
