@@ -14,6 +14,13 @@ CHASSIS_TOPIC = "/apollo/canbus/chassis"
 IMU_TOPIC = "/apollo/sensor/gnss/imu"
 OBSTACLES_TOPIC = "/apollo/perception/obstacles"
 PLANNING_TOPIC = "/apollo/planning"
+ROUTING_RESPONSE_TOPIC = "/apollo/routing_response"
+ROUTING_RESPONSE_HISTORY_TOPIC = "/apollo/routing_response_history"
+REQUIRED_RUN_SIM_TOPICS = (
+    POSE_TOPIC,
+    CHASSIS_TOPIC,
+    OBSTACLES_TOPIC,
+)
 
 OBSTACLE_TYPE_NAMES = {
     3: "pedestrian",
@@ -538,6 +545,100 @@ def load_map_candidates(maps_root: Path) -> List[Dict[str, object]]:
     return candidates
 
 
+def match_map_candidates(
+    pose_points_xy: Sequence[Tuple[float, float]],
+    map_candidates: Sequence[Dict[str, object]],
+) -> Dict[str, object]:
+    ego_bbox = _finalize_bbox(_vector_bbox(pose_points_xy))
+    matched_candidates: List[Dict[str, object]] = []
+    if ego_bbox is not None:
+        center_x = ego_bbox["center_x"]
+        center_y = ego_bbox["center_y"]
+        for candidate in map_candidates:
+            lane_hits = [
+                lane["lane_id"]
+                for lane in candidate["lane_bboxes"]
+                if _point_in_bbox(center_x, center_y, lane["bbox"])
+            ]
+            if lane_hits:
+                matched_candidates.append(
+                    {
+                        "map_name": candidate["map_name"],
+                        "map_path": candidate["map_path"],
+                        "proj": candidate["proj"],
+                        "map_bbox": candidate["map_bbox"],
+                        "lane_match_count": len(lane_hits),
+                        "lane_match_examples": lane_hits[:5],
+                    }
+                )
+    matched_candidates.sort(key=lambda item: (-item["lane_match_count"], item["map_name"]))
+    return {
+        "matched_map": matched_candidates[0] if matched_candidates else None,
+        "ego_bbox": ego_bbox,
+        "candidate_results": matched_candidates,
+    }
+
+
+def inspect_record_for_run_sim(record_path: str, maps_root: Path) -> Dict[str, object]:
+    """run_sim용 lightweight record inspection.
+
+    Returns required topic presence plus the existing parser_validation map-match
+    decision so orchestration code can stay stdlib-only and call into this via
+    `.venv-apollo/bin/python`.
+    """
+    topic_counts: Dict[str, int] = defaultdict(int)
+    pose_rows: List[Tuple[int, float, float, float]] = []
+
+    for topic, msg, timestamp_ns in Record(record_path).read_messages():
+        del timestamp_ns
+        topic_counts[topic] += 1
+        if topic == POSE_TOPIC:
+            pose_rows.append(
+                (
+                    0,
+                    float(msg.pose.position.x),
+                    float(msg.pose.position.y),
+                    float(msg.pose.position.z),
+                )
+            )
+
+    pose_points_xy = [(x, y) for _, x, y, _ in pose_rows]
+    try:
+        map_candidates = load_map_candidates(maps_root)
+    except ValueError:
+        map_candidates = []
+    match = match_map_candidates(pose_points_xy, map_candidates)
+    matched_map = match["matched_map"]
+    missing_required_topics = [
+        topic for topic in REQUIRED_RUN_SIM_TOPICS if topic_counts.get(topic, 0) <= 0
+    ]
+    if (
+        topic_counts.get(ROUTING_RESPONSE_TOPIC, 0) <= 0
+        and topic_counts.get(ROUTING_RESPONSE_HISTORY_TOPIC, 0) <= 0
+    ):
+        missing_required_topics.append(
+            f"{ROUTING_RESPONSE_TOPIC}|{ROUTING_RESPONSE_HISTORY_TOPIC}"
+        )
+    return {
+        "record_path": record_path,
+        "topic_counts": dict(sorted(topic_counts.items())),
+        "required_topics": list(REQUIRED_RUN_SIM_TOPICS)
+        + [f"{ROUTING_RESPONSE_TOPIC}|{ROUTING_RESPONSE_HISTORY_TOPIC}"],
+        "missing_required_topics": missing_required_topics,
+        "pose_sample_count": len(pose_rows),
+        "map_match": {
+            "matched_map": matched_map["map_name"] if matched_map else None,
+            "matched_map_path": matched_map["map_path"] if matched_map else None,
+            "matched_map_proj": matched_map["proj"] if matched_map else None,
+            "ego_bbox": match["ego_bbox"],
+            "map_bbox": matched_map["map_bbox"] if matched_map else None,
+            "lane_match_count": matched_map["lane_match_count"] if matched_map else 0,
+            "lane_match_examples": matched_map["lane_match_examples"] if matched_map else [],
+            "candidate_results": match["candidate_results"],
+        },
+    }
+
+
 def summarize_record(record_path: str, maps_root: Path) -> Dict[str, object]:
     channel_counts: Dict[str, int] = defaultdict(int)
     first_timestamp_ns: Optional[int] = None
@@ -632,29 +733,9 @@ def summarize_record(record_path: str, maps_root: Path) -> Dict[str, object]:
     ego_bbox = _finalize_bbox(_vector_bbox(pose_points_xy))
 
     map_candidates = load_map_candidates(maps_root)
-    matched_candidates: List[Dict[str, object]] = []
-    if ego_bbox is not None:
-        center_x = ego_bbox["center_x"]
-        center_y = ego_bbox["center_y"]
-        for candidate in map_candidates:
-            lane_hits = [
-                lane["lane_id"]
-                for lane in candidate["lane_bboxes"]
-                if _point_in_bbox(center_x, center_y, lane["bbox"])
-            ]
-            if lane_hits:
-                matched_candidates.append(
-                    {
-                        "map_name": candidate["map_name"],
-                        "map_path": candidate["map_path"],
-                        "proj": candidate["proj"],
-                        "map_bbox": candidate["map_bbox"],
-                        "lane_match_count": len(lane_hits),
-                        "lane_match_examples": lane_hits[:5],
-                    }
-                )
-    matched_candidates.sort(key=lambda item: (-item["lane_match_count"], item["map_name"]))
-    matched_map = matched_candidates[0] if matched_candidates else None
+    map_match = match_map_candidates(pose_points_xy, map_candidates)
+    matched_candidates = map_match["candidate_results"]
+    matched_map = map_match["matched_map"]
 
     speeds = [speed for _, speed, _ in chassis_rows]
     steerings = [steer for _, _, steer in chassis_rows]
