@@ -1,4 +1,4 @@
-# hanelso_swm Docker 환경 명세 (SPEC)
+# dopamine-av Docker 환경 명세 (SPEC)
 
 > **핵심 순서**: `git clone`(=src 전부 확보) → `docker build`(=의존성·환경만 구성) → `docker run`(=clone된 src 마운트해 실행).
 > **Dockerfile의 역할 = 환경(패키지·라이브러리) 구성 그 하나.** src를 fetch/COPY하지 않는다. build.sh 없음.
@@ -9,11 +9,11 @@
 
 | 단계 | 주체 | 책임 | 산출 |
 |---|---|---|---|
-| **git clone** | git repo | **모든 src 확보** (hanelso_swm 코드 + `planning/models/pluto/src` vendored 포함) | 워킹트리 |
+| **git clone** | git repo | **모든 src 확보** (dopamine-av 코드 + `planning/models/pluto/src` vendored 포함) | 워킹트리 |
 | **docker build** | **Dockerfile** | **의존성 package·library 설치 + 환경 변수/시스템 라이브러리 구성** | 이미지 |
 | **docker run** | 실행자 | clone된 src를 **마운트**해서 환경 위에서 실행 | parsed·infer·mp4 |
 
-- **Dockerfile은 src를 모른다.** hanelso_swm 코드(`planning/models/pluto/src` vendored 포함)는 clone이 가져오고 run 시 마운트된다. Dockerfile은 그 코드가 **의존하는 외부 패키지·라이브러리·시스템 lib**만 깐다.
+- **Dockerfile은 src를 모른다.** dopamine-av 코드(`planning/models/pluto/src` vendored 포함)는 clone이 가져오고 run 시 마운트된다. Dockerfile은 그 코드가 **의존하는 외부 패키지·라이브러리·시스템 lib**만 깐다.
 - **build.sh 폐기.** 로컬 파일을 컨텍스트에 모으는 staging 방식은 "clone+build로 재현" 원칙에 위배 → 제거.
 - **재현성**: 이 호스트에 뭐가 있든 무관. 깨끗한 머신에서 `git clone` + `docker build` 하면 동일 환경이 생겨야 한다.
 
@@ -45,7 +45,7 @@
 - 설치: `pip install --no-deps "git+https://github.com/motional/nuplan-devkit.git@e924167"` (deps는 1-B에서 이미 설치).
 
 ### 1-D. 이미지에 넣지 않는 것
-- **src 전체**(hanelso_swm 코드; PLUTO는 `planning/models/pluto/src`에 vendored): clone이 가져와 **런타임 마운트**. Dockerfile 무관.
+- **src 전체**(dopamine-av 코드; PLUTO는 `planning/models/pluto/src`에 vendored): clone이 가져와 **런타임 마운트**. Dockerfile 무관.
 - **data/·work/**: 마운트. **model.onnx**: 아티팩트라 마운트(생기면).
 - **onnxruntime-gpu, natten, torchvision/lightning/torchmetrics**: 불요(§ 학습전용·CUDA).
 
@@ -109,7 +109,7 @@ print('ENV OK | torch', torch.__version__, '| onnxruntime', onnxruntime.__versio
 CMD ["bash"]
 ```
 
-> **주의(설계 불변식)**: 이 Dockerfile에는 `COPY <소스>`(hanelso_swm/planning/models/pluto/src/nuplan-devkit)가 **없다**. requirements.txt 외에 호스트 로컬 파일에 의존하지 않는다(소스는 clone, nuplan은 pip).
+> **주의(설계 불변식)**: 이 Dockerfile에는 `COPY <소스>`(dopamine-av/planning/models/pluto/src/nuplan-devkit)가 **없다**. requirements.txt 외에 호스트 로컬 파일에 의존하지 않는다(소스는 clone, nuplan은 pip).
 
 ---
 
@@ -128,7 +128,7 @@ CMD ["bash"]
 ## 5. 실행 규약 (docker run — 빌드 밖)
 
 ```bash
-# clone된 워킹트리(= hanelso_swm 코드 + planning/models/pluto/src vendored 포함)를 마운트
+# clone된 워킹트리(= dopamine-av 코드 + planning/models/pluto/src vendored 포함)를 마운트
 RUN="docker run --rm \
   -v $PWD:/workspace \
   swm-base:latest"
@@ -167,7 +167,7 @@ $RUN python planning/run_inference.py \
 ---
 
 ## 8. codex 위임 노트
-- **workdir**: `/home/hanelso/hanelso/hanelso_swm`. 산출물 = `docker/base/{Dockerfile, requirements.txt, README.md}`.
+- **workdir**: `/home/hanelso/hanelso/dopamine-av`. 산출물 = `docker/base/{Dockerfile, requirements.txt, README.md}`.
 - **금지**: Dockerfile에 `COPY <소스>` / build.sh 재도입 / 호스트 로컬 경로 의존.
 - **EXEC.md**: workdir 내 `agent/C-SWM-DOCKER_EXEC.md` 작성 후 오케스트레이터가 HANELSO로 복사.
 - `run_in_background=true`.
