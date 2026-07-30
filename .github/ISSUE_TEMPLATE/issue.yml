@@ -1,0 +1,60 @@
+name: 이슈 (버그 · 기능)
+description: 버그 리포트와 기능 요청 공용 템플릿 — 상태 전이 관점(현재 상태 → 수정 후 상태)
+title: "[모듈] "
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: 요약
+      description: 무엇을 바꾸려는지 한두 문장
+    validations:
+      required: true
+  - type: textarea
+    id: use-cases
+    attributes:
+      label: 유스 케이스 (Use cases)
+      description: 사용자 관점에서 이 기능·동작을 사용하는 방법
+    validations:
+      required: false
+  - type: textarea
+    id: condition
+    attributes:
+      label: 발생 조건 (어떨 때 일어나는가)
+      description: 버그면 재현 단계(번호 목록), 기능이면 대상 상황. 특정 데이터만의 문제처럼 쓰지 말고 근본 조건으로 기술 (데이터 의존 재현 정보는 코멘트로)
+    validations:
+      required: true
+  - type: textarea
+    id: current-state
+    attributes:
+      label: 현재 기능의 상태
+      description: 지금 시스템이 어떻게 동작하는가 — 버그면 증상, 기능이면 현 상태·부재
+    validations:
+      required: true
+  - type: textarea
+    id: desired-state
+    attributes:
+      label: 수정 후 올바른 기능의 상태
+      description: 변경 후 기대하는 동작
+    validations:
+      required: true
+  - type: textarea
+    id: benefit
+    attributes:
+      label: 수정 후 이점
+      description: 누구를 위하여, 왜
+    validations:
+      required: false
+  - type: textarea
+    id: requirements
+    attributes:
+      label: 요구사항
+      description: 요구사항 번호가 있다면 함께 등록
+    validations:
+      required: false
+  - type: textarea
+    id: references
+    attributes:
+      label: 관련 링크 및/또는 참조
+      description: 관련 링크, 그림, 문서, 코드 위치 등
+    validations:
+      required: false
