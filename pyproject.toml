@@ -3,9 +3,9 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "hanelso-swm"
+name = "dopamine-av"
 version = "0.1.0"
-description = "hanelso_swm 공용 base — 원본→통합 포맷 파싱·데이터 계약(data_devkit) + 도메인 공유 유틸. 모든 도메인이 import하는 코드 base."
+description = "dopamine-av 공용 base — 원본→통합 포맷 파싱·데이터 계약(data_devkit) + 도메인 공유 유틸. 모든 도메인이 import하는 코드 base."
 requires-python = ">=3.9"
 dependencies = [
     "numpy",
