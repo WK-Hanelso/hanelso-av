@@ -8,12 +8,14 @@ is rendered with the raw/best predictions overlaid on the GT world.
 from __future__ import annotations
 
 import time
+import shutil
 from pathlib import Path
 from typing import Any, Dict
 
 import numpy as np
 import torch
 
+from simulation import perf
 from simulation.sim_utils import frame_agents, local_to_global, make_mp4
 from .base import EgoDriver, register_ego_driver
 
@@ -27,10 +29,11 @@ class LogReplayDriver(EgoDriver):
         dataset = clip["dataset"]
         n_samples = len(dataset["sample_tokens"])
         ego_dims = np.asarray(dataset["physical_ego_dims"], dtype=np.float64)  # (width, length)
+        shutil.rmtree(frames_dir, ignore_errors=True)
         frames_dir.mkdir(parents=True, exist_ok=True)
 
         steps = int(sim_cfg["steps"])
-        stride = int(sim_cfg.get("stride", 2))
+        stride = int(sim_cfg.get("stride", 1))
         view_radius = float(sim_cfg.get("view_radius", 50.0))
         start_index = sim_cfg.get("start_index")
         hist_steps = int(clip["hist_steps"])
@@ -40,54 +43,57 @@ class LogReplayDriver(EgoDriver):
         records = []
         for frame_no, t0_idx in enumerate(indices):
             t_begin = time.time()
-            build = self.adapter.build_frame(clip, t0_idx)
-            with torch.inference_mode():
-                output = self.policy.infer(build.feature)
-            post = None
-            if sim_cfg.get("postprocess", True):
-                post = self.postprocessor.run(
-                    model_output=output["raw_output"],
-                    normalized_data=build.normalized_numpy_data,
-                    scene_context=build.scene_context,
-                )
+            with perf.section("driver.open_loop.step_total"):
+                build = self.adapter.build_frame(clip, t0_idx)
+                with torch.inference_mode():
+                    output = self.policy.infer(build.feature)
+                post = None
+                if sim_cfg.get("postprocess", True):
+                    with perf.section("driver.open_loop.postprocess"):
+                        post = self.postprocessor.run(
+                            model_output=output["raw_output"],
+                            normalized_data=build.normalized_numpy_data,
+                            scene_context=build.scene_context,
+                        )
 
-            ego_pose = np.array(
-                [
-                    dataset["ego_positions"][t0_idx][0],
-                    dataset["ego_positions"][t0_idx][1],
-                    dataset["ego_headings"][t0_idx],
-                ],
-                dtype=np.float64,
-            )
-            raw_local = output["output_trajectory"].detach().cpu().numpy()[0]
-            raw_global = local_to_global(raw_local, ego_pose[:2], float(ego_pose[2]))
-            best_global = post["best_trajectory_global"] if post is not None else None
-            emergency = bool(post["emergency_brake"]) if post is not None else False
-
-            agents = frame_agents(dataset, t0_idx, ego_pose[:2], view_radius * 1.5)
-            speed = float(dataset["ego_speed"][t0_idx])
-            t_sec = dataset["sample_ts_sec"][t0_idx] - dataset["sample_ts_sec"][0]
-            renderer.render_frame(
-                frames_dir / f"frame_{frame_no:05d}.png",
-                {
-                    "build": build,
-                    "output": output,
-                    "post": post,
-                    "iteration": frame_no,
-                    "ego_pose": ego_pose,
-                    "ego_dims": ego_dims,
-                    "agents": agents,
-                    "raw_traj_global": raw_global,
-                    "best_traj_global": best_global,
-                    "title": f"{clip['config'].get('clip_id', '')} open_loop (ego=log GT)",
-                    "info_lines": [
-                        f"frame {frame_no:4d}  log_idx {t0_idx:4d}  t={t_sec:6.1f}s",
-                        f"ego speed {speed:5.2f} m/s  agents {len(agents):2d}",
-                        f"emergency_brake={emergency}",
+                ego_pose = np.array(
+                    [
+                        dataset["ego_positions"][t0_idx][0],
+                        dataset["ego_positions"][t0_idx][1],
+                        dataset["ego_headings"][t0_idx],
                     ],
-                    "emergency": emergency,
-                },
-            )
+                    dtype=np.float64,
+                )
+                raw_local = output["output_trajectory"].detach().cpu().numpy()[0]
+                raw_global = local_to_global(raw_local, ego_pose[:2], float(ego_pose[2]))
+                best_global = post["best_trajectory_global"] if post is not None else None
+                emergency = bool(post["emergency_brake"]) if post is not None else False
+
+                agents = frame_agents(dataset, t0_idx, ego_pose[:2], view_radius * 1.5)
+                speed = float(dataset["ego_speed"][t0_idx])
+                t_sec = dataset["sample_ts_sec"][t0_idx] - dataset["sample_ts_sec"][0]
+                with perf.section("driver.open_loop.render"):
+                    renderer.render_frame(
+                        frames_dir / f"frame_{frame_no:05d}.png",
+                        {
+                            "build": build,
+                            "output": output,
+                            "post": post,
+                            "iteration": frame_no,
+                            "ego_pose": ego_pose,
+                            "ego_dims": ego_dims,
+                            "agents": agents,
+                            "raw_traj_global": raw_global,
+                            "best_traj_global": best_global,
+                            "title": f"{clip['config'].get('clip_id', '')} open_loop (ego=log GT)",
+                            "info_lines": [
+                                f"frame {frame_no:4d}  log_idx {t0_idx:4d}  t={t_sec:6.1f}s",
+                                f"ego speed {speed:5.2f} m/s  agents {len(agents):2d}",
+                                f"emergency_brake={emergency}",
+                            ],
+                            "emergency": emergency,
+                        },
+                    )
             records.append(
                 {
                     "frame": frame_no,

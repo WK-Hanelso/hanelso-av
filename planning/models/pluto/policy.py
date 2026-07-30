@@ -7,6 +7,7 @@ import torch
 import yaml
 
 from planning.interface import Policy, register_policy
+from simulation import perf
 
 
 def _to_cpu(obj: Any) -> Any:
@@ -85,11 +86,13 @@ class PlutoTorchPolicy(Policy):
 
     @torch.inference_mode()
     def infer(self, feature: Any) -> dict[str, Any]:
-        if hasattr(feature, "to_device"):
-            feature = feature.to_device(self.device)
-        batch = feature.data if hasattr(feature, "data") else feature
-        output = self.model(batch)
-        output = _to_cpu(output)
+        with perf.section("policy.infer.total"):
+            if hasattr(feature, "to_device"):
+                feature = feature.to_device(self.device)
+            batch = feature.data if hasattr(feature, "data") else feature
+            with perf.section("policy.infer.model_forward"):
+                output = self.model(batch)
+            output = _to_cpu(output)
         return {
             "output_trajectory": output["output_trajectory"],
             "candidate_trajectories": output["candidate_trajectories"],

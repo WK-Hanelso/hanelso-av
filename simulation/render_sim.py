@@ -41,6 +41,7 @@ from planning.interface import (
     load_model,
 )
 from simulation.drivers import MODE_TO_DRIVER, get_ego_driver
+from simulation import perf
 from simulation.renderers import get_renderer
 
 
@@ -60,6 +61,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    perf.reset()
     cfg = load_config(args.config)
     plan_cfg = cfg.get("planning")
     sim_cfg = dict(cfg.get("simulation") or {})
@@ -118,6 +120,9 @@ def main() -> int:
     mode_name = f"{mode}{renderer.suffix}"
     frames_dir = out_dir / mode_name
     result = driver.run(renderer, frames_dir, mode_name, out_dir)
+    profile = perf.snapshot()
+    if profile:
+        result["profile"] = profile
 
     result["clip_id"] = clip_id
     result["root_config"] = str(Path(args.config).resolve())

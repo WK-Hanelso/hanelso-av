@@ -16,6 +16,7 @@ from nuplan.planning.simulation.observation.observation_type import DetectionsTr
 from shapely import LineString
 
 from planning.nuplan_common.scenario_manager.occupancy_map import OccupancyMap
+from simulation import perf
 
 from .common.enum import (
     CollisionType,
@@ -168,9 +169,10 @@ class TrajectoryEvaluator:
     def _update_ego_rollout(
         self, init_ego_state: EgoState, candidate_trajectories: np.ndarray
     ):
-        rollout_states = self._forward_simulator.forward(
-            candidate_trajectories, init_ego_state
-        )
+        with perf.section("postprocess.forward_sim"):
+            rollout_states = self._forward_simulator.forward(
+                candidate_trajectories, init_ego_state
+            )
         N, T, _ = rollout_states.shape
         vertices = compute_agents_vertices(
             center=ego_rear_to_center(

@@ -25,6 +25,7 @@ from nuplan.common.actor_state.vehicle_parameters import VehicleParameters
 from scipy.special import softmax
 
 from planning.interface import Postprocessor, register_postprocessor
+from simulation import perf
 
 
 class PlutoPostProcessor(Postprocessor):
@@ -69,79 +70,82 @@ class PlutoPostProcessor(Postprocessor):
                 return value.detach().cpu().numpy()
             return np.asarray(value)
 
-        candidate_trajectories = (
-            to_numpy(model_output["candidate_trajectories"])[0].astype(np.float64)
-        )
-        probability = to_numpy(model_output["probability"])[0]
-        predictions = to_numpy(model_output["output_prediction"])[0]
-        ref_free_trajectory = (
-            to_numpy(model_output["output_ref_free_trajectory"])[0].astype(np.float64)
-            if "output_ref_free_trajectory" in model_output
-            else None
-        )
+        with perf.section("postprocess.run.total"):
+            candidate_trajectories = (
+                to_numpy(model_output["candidate_trajectories"])[0].astype(np.float64)
+            )
+            probability = to_numpy(model_output["probability"])[0]
+            predictions = to_numpy(model_output["output_prediction"])[0]
+            ref_free_trajectory = (
+                to_numpy(model_output["output_ref_free_trajectory"])[0].astype(np.float64)
+                if "output_ref_free_trajectory" in model_output
+                else None
+            )
 
-        ego_state = scene_context["ego_state"]
-        hist_steps = int(scene_context["hist_steps"])
-        agent_rows: List[int] = list(scene_context["agent_rows"])
+            ego_state = scene_context["ego_state"]
+            hist_steps = int(scene_context["hist_steps"])
+            agent_rows: List[int] = list(scene_context["agent_rows"])
 
-        candidate_trajectories, learning_based_score = self._trim_candidates(
-            candidate_trajectories,
-            probability,
-            ego_state,
-            ref_free_trajectory,
-        )
+            candidate_trajectories, learning_based_score = self._trim_candidates(
+                candidate_trajectories,
+                probability,
+                ego_state,
+                ref_free_trajectory,
+            )
 
-        agent_data, selected_predictions = self._select_valid_agents(
-            normalized_data, predictions, agent_rows, hist_steps
-        )
-        agent_data["agent_tokens"] = ["ego"] + list(scene_context["agent_tokens"])
-        agents_info = self._get_agent_info(agent_data, selected_predictions, ego_state)
+            agent_data, selected_predictions = self._select_valid_agents(
+                normalized_data, predictions, agent_rows, hist_steps
+            )
+            agent_data["agent_tokens"] = ["ego"] + list(scene_context["agent_tokens"])
+            agents_info = self._get_agent_info(agent_data, selected_predictions, ego_state)
 
-        rule_based_scores = self._trajectory_evaluator.evaluate(
-            candidate_trajectories=candidate_trajectories,
-            init_ego_state=ego_state,
-            detections=scene_context["detections"],
-            traffic_light_data=scene_context["traffic_light_data"],
-            agents_info=agents_info,
-            route_lane_dict=scene_context["route_lane_dict"],
-            drivable_area_map=scene_context["drivable_area_map"],
-            baseline_path=self._get_ego_baseline_path(
-                scene_context["reference_lines_global"], ego_state
-            ),
-        )
+            with perf.section("postprocess.trajectory_evaluator"):
+                rule_based_scores = self._trajectory_evaluator.evaluate(
+                    candidate_trajectories=candidate_trajectories,
+                    init_ego_state=ego_state,
+                    detections=scene_context["detections"],
+                    traffic_light_data=scene_context["traffic_light_data"],
+                    agents_info=agents_info,
+                    route_lane_dict=scene_context["route_lane_dict"],
+                    drivable_area_map=scene_context["drivable_area_map"],
+                    baseline_path=self._get_ego_baseline_path(
+                        scene_context["reference_lines_global"], ego_state
+                    ),
+                )
 
-        final_scores = (
-            rule_based_scores + self._learning_based_score_weight * learning_based_score
-        )
-        best_candidate_idx = int(final_scores.argmax())
+            final_scores = (
+                rule_based_scores + self._learning_based_score_weight * learning_based_score
+            )
+            best_candidate_idx = int(final_scores.argmax())
 
-        time_to_at_fault_collision = float(
-            self._trajectory_evaluator.time_to_at_fault_collision(best_candidate_idx)
-        )
-        ebrake_trajectory = self._emergency_brake.brake_if_emergency(
-            ego_state,
-            time_to_at_fault_collision,
-            candidate_trajectories[best_candidate_idx],
-        )
-        emergency = ebrake_trajectory is not None
+            time_to_at_fault_collision = float(
+                self._trajectory_evaluator.time_to_at_fault_collision(best_candidate_idx)
+            )
+            with perf.section("postprocess.emergency_brake"):
+                ebrake_trajectory = self._emergency_brake.brake_if_emergency(
+                    ego_state,
+                    time_to_at_fault_collision,
+                    candidate_trajectories[best_candidate_idx],
+                )
+            emergency = ebrake_trajectory is not None
 
-        if emergency:
-            best_trajectory_global = self._interpolated_trajectory_to_array(
-                ebrake_trajectory
-            )[1:]
-        else:
-            best_trajectory_global = candidate_trajectories[best_candidate_idx, 1:]
+            if emergency:
+                best_trajectory_global = self._interpolated_trajectory_to_array(
+                    ebrake_trajectory
+                )[1:]
+            else:
+                best_trajectory_global = candidate_trajectories[best_candidate_idx, 1:]
 
-        best_trajectory_local = self._global_to_local(best_trajectory_global, ego_state)
+            best_trajectory_local = self._global_to_local(best_trajectory_global, ego_state)
 
-        drivable_area_map = scene_context["drivable_area_map"]
-        in_polygons = drivable_area_map.points_in_polygons(
-            best_trajectory_global[:, :2]
-        )
-        best_in_drivable_fraction = float(in_polygons.any(axis=0).mean())
+            drivable_area_map = scene_context["drivable_area_map"]
+            in_polygons = drivable_area_map.points_in_polygons(
+                best_trajectory_global[:, :2]
+            )
+            best_in_drivable_fraction = float(in_polygons.any(axis=0).mean())
 
-        multi_metrics = self._trajectory_evaluator._multi_metrics
-        weighted_metrics = self._trajectory_evaluator._weighted_metrics
+            multi_metrics = self._trajectory_evaluator._multi_metrics
+            weighted_metrics = self._trajectory_evaluator._weighted_metrics
 
         return {
             "num_candidates": int(len(candidate_trajectories)),

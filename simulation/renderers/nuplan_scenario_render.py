@@ -1,3 +1,4 @@
+import os
 from typing import Dict, List, Set
 
 import matplotlib.patches as patches
@@ -65,6 +66,13 @@ class NuplanScenarioRender:
         self.candidate_index = None
         self._history_trajectory = []
         self._expert_history_trajectory = []
+        self._reuse_figure = os.getenv(
+            "SIM_DISABLE_RENDER_REUSE", ""
+        ).lower() not in {"1", "true", "yes", "on"}
+        if self._reuse_figure:
+            self._fig, self._ax = plt.subplots(figsize=(10, 10))
+        else:
+            self._fig, self._ax = None, None
 
         self.interested_objects_types = [
             TrackedObjectType.EGO,
@@ -196,7 +204,11 @@ class NuplanScenarioRender:
         agent_attn_weights=None,
         return_img=False,
     ):
-        fig, ax = plt.subplots(figsize=(10, 10))
+        if self._reuse_figure:
+            fig, ax = self._fig, self._ax
+            ax.clear()
+        else:
+            fig, ax = plt.subplots(figsize=(10, 10))
 
         self._history_trajectory.append(ego_state.rear_axle.array)
         if gt_state is not None:
@@ -273,7 +285,8 @@ class NuplanScenarioRender:
             img = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8).reshape(
                 int(height), int(width), 3
             )
-            plt.close(fig)
+            if not self._reuse_figure:
+                plt.close(fig)
             return img
         else:
             plt.show()

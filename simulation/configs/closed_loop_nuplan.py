@@ -6,8 +6,8 @@ config = dict(
     mode="closed_loop",   # open_loop | closed_loop
     renderer="nuplan",    # matplotlib | nuplan (simulation/renderers registry)
     steps=100,            # sim steps (closed) / rendered frames (open)
-    stride=2,             # open_loop: rendered frame당 진행할 log frame 수
-    fps=None,             # mp4 fps (None -> open: 10/stride, closed: 10)
+    stride=1,             # open_loop: log 0.1s 샘플을 그대로 사용 (stride=1 -> 10 fps)
+    fps=None,             # mp4 fps (None -> open: 10/stride, closed: 10; 기본 10 fps)
     start_index=None,     # t_start log index (None -> 첫 full-history frame)
     view_radius=50.0,
     postprocess=True,

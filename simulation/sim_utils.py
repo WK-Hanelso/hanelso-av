@@ -10,6 +10,7 @@ from typing import Any, Dict, List
 import numpy as np
 
 from calibration.vehicle import max_tire_angle, to_vehicle_parameters
+from simulation import perf
 
 PROGRESS_WINDOW = 80  # frames scanned ahead for progress alignment
 
@@ -103,7 +104,8 @@ def make_mp4(frames_dir: Path, out_path: Path, fps: int) -> Dict[str, Any]:
             "pad=ceil(iw/2)*2:ceil(ih/2)*2",
             str(out_path),
         ]
-        proc = subprocess.run(cmd, capture_output=True, text=True)
+        with perf.section("io.mp4_encode"):
+            proc = subprocess.run(cmd, capture_output=True, text=True)
         attempts.append({"codec": codec, "returncode": proc.returncode, "stderr": proc.stderr[-500:]})
         if proc.returncode == 0 and out_path.exists() and out_path.stat().st_size > 0:
             return {"ok": True, "codec": codec, "path": str(out_path), "size_bytes": out_path.stat().st_size}

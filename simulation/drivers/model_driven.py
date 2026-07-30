@@ -12,6 +12,7 @@ hybrid rule (PIPELINE.md 4.4):
 from __future__ import annotations
 
 import math
+import shutil
 import time
 from pathlib import Path
 from typing import Any, Dict, List
@@ -19,6 +20,7 @@ from typing import Any, Dict, List
 import numpy as np
 import torch
 
+from simulation import perf
 from simulation.sim_utils import (
     PROGRESS_WINDOW,
     build_ego_state_from_array,
@@ -43,6 +45,7 @@ class ModelDrivenDriver(EgoDriver):
         dataset = clip["dataset"]
         n_samples = len(dataset["sample_tokens"])
         ego_dims = np.asarray(dataset["physical_ego_dims"], dtype=np.float64)
+        shutil.rmtree(frames_dir, ignore_errors=True)
         frames_dir.mkdir(parents=True, exist_ok=True)
 
         steps = int(sim_cfg["steps"])
@@ -85,141 +88,143 @@ class ModelDrivenDriver(EgoDriver):
 
         for step in range(steps):
             t_begin = time.time()
-            pose = ego_state_to_pose(ego_state)
+            with perf.section("driver.closed_loop.step_total"):
+                pose = ego_state_to_pose(ego_state)
 
-            # --- progress-aligned agent fetch (PIPELINE.md 4.4 hybrid rule)
-            if step > 0:
-                hi = min(prog_j + PROGRESS_WINDOW, n_samples)
-                window = dataset["ego_positions"][prog_j:hi]
-                matched = prog_j + int(
-                    np.argmin(np.linalg.norm(window - pose[:2], axis=1))
+                if step > 0:
+                    hi = min(prog_j + PROGRESS_WINDOW, n_samples)
+                    window = dataset["ego_positions"][prog_j:hi]
+                    matched = prog_j + int(
+                        np.argmin(np.linalg.norm(window - pose[:2], axis=1))
+                    )
+                    prog_j = min(max(matched, prog_j + 1), n_samples - 1)
+
+                dyn = ego_state.dynamic_car_state
+                speed = float(
+                    np.hypot(dyn.rear_axle_velocity_2d.x, dyn.rear_axle_velocity_2d.y)
                 )
-                prog_j = min(max(matched, prog_j + 1), n_samples - 1)
-
-            # --- feature from sim ego history + log agents at prog_j
-            dyn = ego_state.dynamic_car_state
-            speed = float(np.hypot(dyn.rear_axle_velocity_2d.x, dyn.rear_axle_velocity_2d.y))
-            sim_ego = {
-                "position": np.asarray(positions, dtype=np.float64),
-                "heading": np.asarray(headings, dtype=np.float64),
-                "velocity_global": np.asarray(velocities, dtype=np.float64),
-                "valid_mask": np.asarray(valid, dtype=bool),
-                "current_state": np.array(
-                    [
-                        pose[0],
-                        pose[1],
-                        pose[2],
-                        speed,
-                        float(dyn.rear_axle_acceleration_2d.x),
-                        float(ego_state.tire_steering_angle),
-                        float(dyn.angular_velocity),
-                    ],
-                    dtype=np.float64,
-                ),
-                "ego_state": ego_state,
-            }
-            build = adapter.build_frame(clip, prog_j, sim_ego=sim_ego)
-            with torch.inference_mode():
-                output = self.policy.infer(build.feature)
-            post = self.postprocessor.run(
-                model_output=output["raw_output"],
-                normalized_data=build.normalized_numpy_data,
-                scene_context=build.scene_context,
-            )
-            best_global = np.asarray(post["best_trajectory_global"], dtype=np.float64)
-            emergency = bool(post["emergency_brake"])
-
-            # --- propagate ego 1 step with the original ForwardSimulator
-            candidate = np.concatenate([pose[None, :], best_global[:, :3]], axis=0)
-            if len(candidate) < 81:
-                pad = np.repeat(candidate[-1:], 81 - len(candidate), axis=0)
-                candidate = np.concatenate([candidate, pad], axis=0)
-            rollout = forward_sim.forward(candidate[None, :81], ego_state)
-            new_state = rollout[0, 1]
-            new_time_us = ego_state.time_point.time_us + int(dt * 1e6)
-            new_ego_state = build_ego_state_from_array(
-                new_state,
-                new_time_us,
-                dataset["calibration"],
-            )
-            new_pose = ego_state_to_pose(new_ego_state)
-            sim_trace.append(new_pose)
-
-            # history: drop oldest, append the new sim state
-            heading_new = float(new_state[2])
-            rot = np.array(
-                [
-                    [math.cos(heading_new), -math.sin(heading_new)],
-                    [math.sin(heading_new), math.cos(heading_new)],
-                ]
-            )
-            vel_global = rot @ np.array([new_state[3], new_state[4]], dtype=np.float64)
-            positions = positions[1:] + [new_pose[:2].copy()]
-            headings = headings[1:] + [heading_new]
-            velocities = velocities[1:] + [vel_global]
-            valid = valid[1:] + [True]
-
-            # --- metrics
-            step_disp = float(np.linalg.norm(new_pose[:2] - pose[:2]))
-            time_idx = min(start + step + 1, n_samples - 1)
-            div_time = float(np.linalg.norm(new_pose[:2] - dataset["ego_positions"][time_idx]))
-            div_prog = float(np.linalg.norm(new_pose[:2] - dataset["ego_positions"][prog_j]))
-            dam = build.scene_context["drivable_area_map"]
-            in_drivable = bool(dam.points_in_polygons(new_pose[None, :2]).any())
-            agents = frame_agents(dataset, prog_j, new_pose[:2], view_radius * 1.5)
-            hits = check_collision(new_pose, ego_dims, rear_axle_to_center, agents)
-            if hits:
-                collisions_total.append({"step": step, "tokens": hits})
-
-            new_speed = float(np.hypot(new_state[3], new_state[4]))
-            records.append(
-                {
-                    "step": step,
-                    "prog_j": prog_j,
-                    "sim_xy": [round(float(new_pose[0]), 3), round(float(new_pose[1]), 3)],
-                    "speed_mps": round(new_speed, 3),
-                    "step_disp_m": round(step_disp, 4),
-                    "divergence_time_aligned_m": round(div_time, 3),
-                    "divergence_progress_aligned_m": round(div_prog, 3),
-                    "in_drivable": in_drivable,
-                    "emergency_brake": emergency,
-                    "collision_tokens": hits,
-                    "wall_time_sec": round(time.time() - t_begin, 3),
-                }
-            )
-
-            # render at decision time (pre-step ego) for the official nuplan
-            # renderer semantics; the matplotlib renderer draws the post-step
-            # state with the log ghost + sim trace (unchanged from C-SWM-018).
-            renderer.render_frame(
-                frames_dir / f"frame_{step:05d}.png",
-                {
-                    "build": build,
-                    "output": output,
-                    "post": post,
-                    "iteration": step,
-                    "ego_pose": new_pose,
-                    "ego_dims": ego_dims,
-                    "agents": agents,
-                    "best_traj_global": best_global,
-                    "log_ego_pose": np.array(
+                sim_ego = {
+                    "position": np.asarray(positions, dtype=np.float64),
+                    "heading": np.asarray(headings, dtype=np.float64),
+                    "velocity_global": np.asarray(velocities, dtype=np.float64),
+                    "valid_mask": np.asarray(valid, dtype=bool),
+                    "current_state": np.array(
                         [
-                            dataset["ego_positions"][prog_j][0],
-                            dataset["ego_positions"][prog_j][1],
-                            dataset["ego_headings"][prog_j],
-                        ]
+                            pose[0],
+                            pose[1],
+                            pose[2],
+                            speed,
+                            float(dyn.rear_axle_acceleration_2d.x),
+                            float(ego_state.tire_steering_angle),
+                            float(dyn.angular_velocity),
+                        ],
+                        dtype=np.float64,
                     ),
-                    "sim_trace": np.asarray(sim_trace),
-                    "title": f"{clip['config'].get('clip_id', '')} closed_loop (ego=model)",
-                    "info_lines": [
-                        f"step {step:4d}  prog_j {prog_j:4d}/{n_samples}",
-                        f"speed {new_speed:5.2f} m/s  step {step_disp:5.3f} m",
-                        f"div(time) {div_time:6.2f} m  div(prog) {div_prog:6.2f} m",
-                        f"in_drivable={in_drivable}  ebrake={emergency}  coll={len(hits)}",
-                    ],
-                    "emergency": emergency,
-                },
-            )
+                    "ego_state": ego_state,
+                }
+                build = adapter.build_frame(clip, prog_j, sim_ego=sim_ego)
+                with torch.inference_mode():
+                    output = self.policy.infer(build.feature)
+                with perf.section("driver.closed_loop.postprocess"):
+                    post = self.postprocessor.run(
+                        model_output=output["raw_output"],
+                        normalized_data=build.normalized_numpy_data,
+                        scene_context=build.scene_context,
+                    )
+                best_global = np.asarray(post["best_trajectory_global"], dtype=np.float64)
+                emergency = bool(post["emergency_brake"])
+
+                candidate = np.concatenate([pose[None, :], best_global[:, :3]], axis=0)
+                if len(candidate) < 81:
+                    pad = np.repeat(candidate[-1:], 81 - len(candidate), axis=0)
+                    candidate = np.concatenate([candidate, pad], axis=0)
+                with perf.section("driver.closed_loop.propagate"):
+                    rollout = forward_sim.forward(candidate[None, :81], ego_state)
+                new_state = rollout[0, 1]
+                new_time_us = ego_state.time_point.time_us + int(dt * 1e6)
+                new_ego_state = build_ego_state_from_array(
+                    new_state,
+                    new_time_us,
+                    dataset["calibration"],
+                )
+                new_pose = ego_state_to_pose(new_ego_state)
+                sim_trace.append(new_pose)
+
+                heading_new = float(new_state[2])
+                rot = np.array(
+                    [
+                        [math.cos(heading_new), -math.sin(heading_new)],
+                        [math.sin(heading_new), math.cos(heading_new)],
+                    ]
+                )
+                vel_global = rot @ np.array([new_state[3], new_state[4]], dtype=np.float64)
+                positions = positions[1:] + [new_pose[:2].copy()]
+                headings = headings[1:] + [heading_new]
+                velocities = velocities[1:] + [vel_global]
+                valid = valid[1:] + [True]
+
+                step_disp = float(np.linalg.norm(new_pose[:2] - pose[:2]))
+                time_idx = min(start + step + 1, n_samples - 1)
+                div_time = float(
+                    np.linalg.norm(new_pose[:2] - dataset["ego_positions"][time_idx])
+                )
+                div_prog = float(
+                    np.linalg.norm(new_pose[:2] - dataset["ego_positions"][prog_j])
+                )
+                dam = build.scene_context["drivable_area_map"]
+                in_drivable = bool(dam.points_in_polygons(new_pose[None, :2]).any())
+                agents = frame_agents(dataset, prog_j, new_pose[:2], view_radius * 1.5)
+                hits = check_collision(new_pose, ego_dims, rear_axle_to_center, agents)
+                if hits:
+                    collisions_total.append({"step": step, "tokens": hits})
+
+                new_speed = float(np.hypot(new_state[3], new_state[4]))
+                records.append(
+                    {
+                        "step": step,
+                        "prog_j": prog_j,
+                        "sim_xy": [round(float(new_pose[0]), 3), round(float(new_pose[1]), 3)],
+                        "speed_mps": round(new_speed, 3),
+                        "step_disp_m": round(step_disp, 4),
+                        "divergence_time_aligned_m": round(div_time, 3),
+                        "divergence_progress_aligned_m": round(div_prog, 3),
+                        "in_drivable": in_drivable,
+                        "emergency_brake": emergency,
+                        "collision_tokens": hits,
+                        "wall_time_sec": round(time.time() - t_begin, 3),
+                    }
+                )
+
+                with perf.section("driver.closed_loop.render"):
+                    renderer.render_frame(
+                        frames_dir / f"frame_{step:05d}.png",
+                        {
+                            "build": build,
+                            "output": output,
+                            "post": post,
+                            "iteration": step,
+                            "ego_pose": new_pose,
+                            "ego_dims": ego_dims,
+                            "agents": agents,
+                            "best_traj_global": best_global,
+                            "log_ego_pose": np.array(
+                                [
+                                    dataset["ego_positions"][prog_j][0],
+                                    dataset["ego_positions"][prog_j][1],
+                                    dataset["ego_headings"][prog_j],
+                                ]
+                            ),
+                            "sim_trace": np.asarray(sim_trace),
+                            "title": f"{clip['config'].get('clip_id', '')} closed_loop (ego=model)",
+                            "info_lines": [
+                                f"step {step:4d}  prog_j {prog_j:4d}/{n_samples}",
+                                f"speed {new_speed:5.2f} m/s  step {step_disp:5.3f} m",
+                                f"div(time) {div_time:6.2f} m  div(prog) {div_prog:6.2f} m",
+                                f"in_drivable={in_drivable}  ebrake={emergency}  coll={len(hits)}",
+                            ],
+                            "emergency": emergency,
+                        },
+                    )
             ego_state = new_ego_state
             print(
                 f"[closed_loop] step {step + 1}/{steps} prog_j={prog_j} "

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 from bisect import bisect_left
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,6 +18,7 @@ from calibration.vehicle import (
     to_vehicle_parameters,
 )
 from planning.interface import Dataloader, register_dataloader
+from simulation import perf
 
 
 HIST_STEPS = 21
@@ -33,6 +35,12 @@ CROSSWALK_POINTS = 20
 STATIC_SPEED_THRESHOLD_MPS = 0.5
 ON_ROUTE_THRESHOLD_M = 5.0
 MAP_SELECTION_MARGIN_M = 15.0
+DISABLE_FRAME_CACHE_OPT = os.getenv("SIM_DISABLE_FRAME_CACHE_OPT", "").lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 PACIFICA_DIMS = (2.297, 5.176)
 FEATURE_VEHICLE_DIMENSIONS = {"pacifica": PACIFICA_DIMS}
@@ -853,6 +861,16 @@ class ApolloPlutoDataloader(Dataloader):
         route_payload = json.loads(route_path.read_text())
         map_name = str(config.get("map_name") or "")
         apollo_map = ApolloMap(map_name=map_name or None, payload=map_graph)
+        route_lane_ids = [
+            str(lane_id) for lane_id in route_payload.get("route_lane_ids", [])
+        ]
+        original_roadblock_ids = self._route_roadblocks_from_lane_ids(
+            route_lane_ids, map_graph
+        )
+        public_roadblock_ids = [
+            apollo_map.to_public_roadblock_id(rb_id)
+            for rb_id in original_roadblock_ids
+        ]
         return {
             "parsed_path": parsed_path,
             "dataset": dataset,
@@ -860,6 +878,12 @@ class ApolloPlutoDataloader(Dataloader):
             "route_payload": route_payload,
             "map_api": apollo_map,
             "map_name": map_name,
+            "route_lane_ids": route_lane_ids,
+            "public_route_roadblock_ids": public_roadblock_ids,
+            "scenario_manager": None,
+            "map_feature_cache": None
+            if DISABLE_FRAME_CACHE_OPT
+            else self._prepare_map_feature_cache(map_graph),
             "dt": DT,
             "hist_steps": HIST_STEPS,
             "config": dict(config),
@@ -884,24 +908,27 @@ class ApolloPlutoDataloader(Dataloader):
         """
         PlutoFeature = self._import_pluto_feature()
         t0_reason = "sim_open_loop_frame" if sim_ego is None else "sim_closed_loop_frame"
-        raw_data, context, scene_context = self._build_global_data(
-            clip["parsed_path"],
-            clip["dataset"],
-            clip["map_graph"],
-            t0_index,
-            t0_reason,
-            map_name=clip["map_name"],
-            ego_override=sim_ego,
-            route_payload=clip["route_payload"],
-            map_api=clip["map_api"],
-        )
-        normalized = PlutoFeature.normalize(
-            raw_data,
-            first_time=True,
-            radius=RADIUS,
-            hist_steps=HIST_STEPS,
-        )
-        tensor_feature = PlutoFeature.collate([normalized.to_feature_tensor()])
+        with perf.section("dataloader.build_frame.total"):
+            raw_data, context, scene_context = self._build_global_data(
+                clip["parsed_path"],
+                clip["dataset"],
+                clip["map_graph"],
+                t0_index,
+                t0_reason,
+                map_name=clip["map_name"],
+                ego_override=sim_ego,
+                route_payload=clip["route_payload"],
+                map_api=clip["map_api"],
+                clip_cache=clip,
+            )
+            with perf.section("dataloader.feature_collate"):
+                normalized = PlutoFeature.normalize(
+                    raw_data,
+                    first_time=True,
+                    radius=RADIUS,
+                    hist_steps=HIST_STEPS,
+                )
+                tensor_feature = PlutoFeature.collate([normalized.to_feature_tensor()])
         return AdapterBuildResult(
             feature=tensor_feature,
             context=context,
@@ -920,6 +947,7 @@ class ApolloPlutoDataloader(Dataloader):
         ego_override: Optional[Dict[str, Any]] = None,
         route_payload: Optional[Dict[str, Any]] = None,
         map_api: Optional[Any] = None,
+        clip_cache: Optional[Dict[str, Any]] = None,
     ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
         sample_tokens = dataset["sample_tokens"]
         sample_ts_sec = dataset["sample_ts_sec"]
@@ -965,68 +993,69 @@ class ApolloPlutoDataloader(Dataloader):
         agent_valid_mask[0, :HIST_STEPS] = ego_hist_valid
 
         t0_sample_token = sample_tokens[t0_index]
-        dynamic_candidates: List[Tuple[float, str]] = []
-        static_candidates: List[Tuple[float, str]] = []
-        for instance_token, track in dataset["track_data"].items():
-            ann_idx = track["sample_to_index"].get(t0_sample_token)
-            if ann_idx is None:
-                continue
-            position = track["positions"][ann_idx]
-            distance = float(np.linalg.norm(position - origin_xy))
-            if distance > RADIUS + MAP_SELECTION_MARGIN_M:
-                continue
-            speed = float(np.linalg.norm(track["velocities"][ann_idx]))
-            if speed <= STATIC_SPEED_THRESHOLD_MPS:
-                static_candidates.append((distance, instance_token))
-            else:
-                dynamic_candidates.append((distance, instance_token))
-        dynamic_candidates.sort(key=lambda item: item[0])
-        static_candidates.sort(key=lambda item: item[0])
-
-        selected_agents = [token for _, token in dynamic_candidates[: MAX_AGENTS - 1]]
-        selected_static = [
-            token
-            for _, token in static_candidates
-            if token not in selected_agents
-        ][:MAX_STATIC]
-
-        for agent_slot, instance_token in enumerate(selected_agents, start=1):
-            track = dataset["track_data"][instance_token]
-            sample_to_index = track["sample_to_index"]
-            last_idx = None
-            for hist_slot, sample_index in enumerate(history_indices):
-                ann_idx = sample_to_index.get(sample_tokens[sample_index])
+        with perf.section("dataloader.agent_fetch"):
+            dynamic_candidates: List[Tuple[float, str]] = []
+            static_candidates: List[Tuple[float, str]] = []
+            for instance_token, track in dataset["track_data"].items():
+                ann_idx = track["sample_to_index"].get(t0_sample_token)
                 if ann_idx is None:
                     continue
-                agent_position[agent_slot, hist_slot] = track["positions"][ann_idx]
-                agent_heading[agent_slot, hist_slot] = track["headings"][ann_idx]
-                agent_velocity[agent_slot, hist_slot] = track["velocities"][ann_idx]
-                agent_valid_mask[agent_slot, hist_slot] = True
-                last_idx = ann_idx
-            if last_idx is not None:
-                shape = np.array(
-                    [track["widths"][last_idx], track["lengths"][last_idx]],
+                position = track["positions"][ann_idx]
+                distance = float(np.linalg.norm(position - origin_xy))
+                if distance > RADIUS + MAP_SELECTION_MARGIN_M:
+                    continue
+                speed = float(np.linalg.norm(track["velocities"][ann_idx]))
+                if speed <= STATIC_SPEED_THRESHOLD_MPS:
+                    static_candidates.append((distance, instance_token))
+                else:
+                    dynamic_candidates.append((distance, instance_token))
+            dynamic_candidates.sort(key=lambda item: item[0])
+            static_candidates.sort(key=lambda item: item[0])
+
+            selected_agents = [token for _, token in dynamic_candidates[: MAX_AGENTS - 1]]
+            selected_static = [
+                token
+                for _, token in static_candidates
+                if token not in selected_agents
+            ][:MAX_STATIC]
+
+            for agent_slot, instance_token in enumerate(selected_agents, start=1):
+                track = dataset["track_data"][instance_token]
+                sample_to_index = track["sample_to_index"]
+                last_idx = None
+                for hist_slot, sample_index in enumerate(history_indices):
+                    ann_idx = sample_to_index.get(sample_tokens[sample_index])
+                    if ann_idx is None:
+                        continue
+                    agent_position[agent_slot, hist_slot] = track["positions"][ann_idx]
+                    agent_heading[agent_slot, hist_slot] = track["headings"][ann_idx]
+                    agent_velocity[agent_slot, hist_slot] = track["velocities"][ann_idx]
+                    agent_valid_mask[agent_slot, hist_slot] = True
+                    last_idx = ann_idx
+                if last_idx is not None:
+                    shape = np.array(
+                        [track["widths"][last_idx], track["lengths"][last_idx]],
+                        dtype=np.float64,
+                    )
+                    agent_shape[agent_slot] = shape
+                category = CATEGORY_CODES.get(track["category"], CATEGORY_CODES["vehicle"])
+                agent_category[agent_slot] = np.int8(max(0, min(3, category)))
+
+            static_position = np.zeros((MAX_STATIC, 2), dtype=np.float64)
+            static_heading = np.zeros((MAX_STATIC,), dtype=np.float64)
+            static_shape = np.zeros((MAX_STATIC, 2), dtype=np.float64)
+            static_category = np.full((MAX_STATIC,), STATIC_GENERIC, dtype=np.int8)
+            static_valid_mask = np.zeros((MAX_STATIC,), dtype=bool)
+            for slot, instance_token in enumerate(selected_static):
+                track = dataset["track_data"][instance_token]
+                ann_idx = track["sample_to_index"][t0_sample_token]
+                static_position[slot] = track["positions"][ann_idx]
+                static_heading[slot] = track["headings"][ann_idx]
+                static_shape[slot] = np.array(
+                    [track["widths"][ann_idx], track["lengths"][ann_idx]],
                     dtype=np.float64,
                 )
-                agent_shape[agent_slot] = shape
-            category = CATEGORY_CODES.get(track["category"], CATEGORY_CODES["vehicle"])
-            agent_category[agent_slot] = np.int8(max(0, min(3, category)))
-
-        static_position = np.zeros((MAX_STATIC, 2), dtype=np.float64)
-        static_heading = np.zeros((MAX_STATIC,), dtype=np.float64)
-        static_shape = np.zeros((MAX_STATIC, 2), dtype=np.float64)
-        static_category = np.full((MAX_STATIC,), STATIC_GENERIC, dtype=np.int8)
-        static_valid_mask = np.zeros((MAX_STATIC,), dtype=bool)
-        for slot, instance_token in enumerate(selected_static):
-            track = dataset["track_data"][instance_token]
-            ann_idx = track["sample_to_index"][t0_sample_token]
-            static_position[slot] = track["positions"][ann_idx]
-            static_heading[slot] = track["headings"][ann_idx]
-            static_shape[slot] = np.array(
-                [track["widths"][ann_idx], track["lengths"][ann_idx]],
-                dtype=np.float64,
-            )
-            static_valid_mask[slot] = True
+                static_valid_mask[slot] = True
 
         if route_payload is None:
             route_payload = self._load_route_payload(parsed_path, t0_index, dataset)
@@ -1034,16 +1063,18 @@ class ApolloPlutoDataloader(Dataloader):
             ego_state = self._build_ego_state(dataset, t0_index)
         else:
             ego_state = ego_override["ego_state"]
-        scenario_bundle = self._build_scenario_manager(
-            map_graph=map_graph,
-            map_name=map_name,
-            route_payload=route_payload,
-            ego_state=ego_state,
-            map_api=map_api,
-        )
-        reference_line, route_debug = self._pack_reference_lines(
-            scenario_bundle["reference_lines"]
-        )
+        with perf.section("dataloader.reference_line.total"):
+            scenario_bundle = self._build_scenario_manager(
+                map_graph=map_graph,
+                map_name=map_name,
+                route_payload=route_payload,
+                ego_state=ego_state,
+                map_api=map_api,
+                clip_cache=clip_cache,
+            )
+            reference_line, route_debug = self._pack_reference_lines(
+                scenario_bundle["reference_lines"]
+            )
         route_debug["selected_route_event_timestamp_ns"] = route_payload.get(
             "selected_event_timestamp_ns"
         )
@@ -1051,11 +1082,13 @@ class ApolloPlutoDataloader(Dataloader):
             "selected_event_topic"
         )
         route_debug["route_lane_count"] = len(scenario_bundle["route_lane_ids"])
-        map_features, map_notes = self._build_map_features_global(
-            map_graph=map_graph,
-            ego_global_xy=origin_xy,
-            reference_line=reference_line,
-        )
+        with perf.section("dataloader.map_features"):
+            map_features, map_notes = self._build_map_features_global(
+                map_graph=map_graph,
+                ego_global_xy=origin_xy,
+                reference_line=reference_line,
+                map_feature_cache=clip_cache.get("map_feature_cache") if clip_cache else None,
+            )
         if ego_override is None:
             steering_angle = steering_pct_to_tire_angle(
                 float(dataset["ego_steering"][t0_index]),
@@ -1212,6 +1245,7 @@ class ApolloPlutoDataloader(Dataloader):
         route_payload: Dict[str, Any],
         ego_state: Any,
         map_api: Optional[Any] = None,
+        clip_cache: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Drives the original pluto ScenarioManager/RouteManager over ApolloMap.
 
@@ -1224,9 +1258,11 @@ class ApolloPlutoDataloader(Dataloader):
 
         ScenarioManager = self._import_scenario_manager()
 
-        route_lane_ids = [
-            str(lane_id) for lane_id in route_payload.get("route_lane_ids", [])
-        ]
+        route_lane_ids = (
+            list(clip_cache["route_lane_ids"])
+            if clip_cache and "route_lane_ids" in clip_cache
+            else [str(lane_id) for lane_id in route_payload.get("route_lane_ids", [])]
+        )
         if not route_lane_ids:
             raise ValueError(
                 "route.json has no route_lane_ids; cannot build reference lines."
@@ -1237,32 +1273,54 @@ class ApolloPlutoDataloader(Dataloader):
             if map_api is not None
             else ApolloMap(map_name=map_name or None, payload=map_graph)
         )
-        original_roadblock_ids = self._route_roadblocks_from_lane_ids(
-            route_lane_ids, map_graph
+        public_roadblock_ids = (
+            list(clip_cache["public_route_roadblock_ids"])
+            if clip_cache and "public_route_roadblock_ids" in clip_cache
+            else []
         )
-        if not original_roadblock_ids:
+        if not public_roadblock_ids:
+            original_roadblock_ids = self._route_roadblocks_from_lane_ids(
+                route_lane_ids, map_graph
+            )
+            if not original_roadblock_ids:
+                raise ValueError(
+                    "route.json route_lane_ids do not map to any roadblocks in map_graph."
+                )
+            public_roadblock_ids = [
+                apollo_map.to_public_roadblock_id(rb_id)
+                for rb_id in original_roadblock_ids
+            ]
+        if not public_roadblock_ids:
             raise ValueError(
                 "route.json route_lane_ids do not map to any roadblocks in map_graph."
             )
-        public_roadblock_ids = [
-            apollo_map.to_public_roadblock_id(rb_id)
-            for rb_id in original_roadblock_ids
-        ]
 
         # Same radius formula as PlutoPlanner: eval_dt * eval_num_frames * 60 / 4.
         radius = 0.1 * 80 * 60.0 / 4.0
-        scenario_manager = ScenarioManager(
-            map_api=apollo_map,
-            ego_state=ego_state,
-            route_roadblocks_ids=public_roadblock_ids,
-            radius=radius,
+        scenario_manager = (
+            None
+            if DISABLE_FRAME_CACHE_OPT
+            else clip_cache.get("scenario_manager") if clip_cache else None
         )
-        loaded_roadblock_ids = scenario_manager.get_route_roadblock_ids(process=True)
+        if scenario_manager is None:
+            with perf.section("dataloader.reference_line.scenario_manager_init"):
+                scenario_manager = ScenarioManager(
+                    map_api=apollo_map,
+                    ego_state=ego_state,
+                    route_roadblocks_ids=public_roadblock_ids,
+                    radius=radius,
+                )
+            if clip_cache is not None and not DISABLE_FRAME_CACHE_OPT:
+                clip_cache["scenario_manager"] = scenario_manager
+        with perf.section("dataloader.reference_line.load_route"):
+            loaded_roadblock_ids = scenario_manager.get_route_roadblock_ids(process=True)
         scenario_manager.update_ego_state(ego_state)
-        scenario_manager.update_drivable_area_map()
-        reference_lines = scenario_manager.get_reference_lines(
-            length=REF_STEPS * REF_SPACING
-        )
+        with perf.section("dataloader.reference_line.drivable_area"):
+            scenario_manager.update_drivable_area_map()
+        with perf.section("dataloader.reference_line.get_reference_lines"):
+            reference_lines = scenario_manager.get_reference_lines(
+                length=REF_STEPS * REF_SPACING
+            )
         if not reference_lines:
             raise ValueError("Original ScenarioManager produced no reference lines.")
 
@@ -1472,6 +1530,126 @@ class ApolloPlutoDataloader(Dataloader):
         map_graph: dict,
         ego_global_xy: np.ndarray,
         reference_line: Dict[str, np.ndarray],
+        map_feature_cache: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
+        if map_feature_cache is None:
+            return self._build_map_features_global_uncached(
+                map_graph=map_graph,
+                ego_global_xy=ego_global_xy,
+                reference_line=reference_line,
+            )
+
+        lane_entries = (
+            map_feature_cache["lanes"]
+            if map_feature_cache is not None
+            else []
+        )
+        lane_candidates: List[Tuple[float, Dict[str, Any]]] = []
+        for lane_entry in lane_entries:
+            distance = _min_distance_to_polyline(
+                ego_global_xy, lane_entry["distance_points"]
+            )
+            if distance <= RADIUS + MAP_SELECTION_MARGIN_M:
+                lane_candidates.append((distance, lane_entry))
+        lane_candidates.sort(key=lambda item: item[0])
+
+        crosswalk_entries = (
+            map_feature_cache["crosswalks"]
+            if map_feature_cache is not None
+            else []
+        )
+        crosswalk_candidates: List[Tuple[float, Dict[str, Any]]] = []
+        for crosswalk_entry in crosswalk_entries:
+            distance = _min_distance_to_polyline(
+                ego_global_xy, crosswalk_entry["distance_points"]
+            )
+            if distance <= RADIUS + MAP_SELECTION_MARGIN_M:
+                crosswalk_candidates.append((distance, crosswalk_entry))
+        crosswalk_candidates.sort(key=lambda item: item[0])
+
+        total_polygons = min(MAX_LANES, len(lane_candidates)) + min(
+            MAX_CROSSWALKS, len(crosswalk_candidates)
+        )
+        point_position = np.zeros((total_polygons, 3, LANE_POINTS, 2), dtype=np.float64)
+        point_vector = np.zeros((total_polygons, 3, LANE_POINTS, 2), dtype=np.float64)
+        point_side = np.zeros((total_polygons, 3), dtype=np.int8)
+        point_orientation = np.zeros((total_polygons, 3, LANE_POINTS), dtype=np.float64)
+        polygon_center = np.zeros((total_polygons, 3), dtype=np.float64)
+        polygon_position = np.zeros((total_polygons, 2), dtype=np.float64)
+        polygon_orientation = np.zeros((total_polygons,), dtype=np.float64)
+        polygon_type = np.zeros((total_polygons,), dtype=np.int8)
+        polygon_on_route = np.zeros((total_polygons,), dtype=bool)
+        polygon_tl_status = np.full((total_polygons,), TL_UNKNOWN, dtype=np.int8)
+        polygon_has_speed_limit = np.zeros((total_polygons,), dtype=bool)
+        polygon_speed_limit = np.zeros((total_polygons,), dtype=np.float64)
+        polygon_road_block_id = np.zeros((total_polygons,), dtype=np.int32)
+        ref_lines = [
+            reference_line["position"][idx][reference_line["valid_mask"][idx]]
+            for idx in range(reference_line["position"].shape[0])
+        ]
+        slot = 0
+
+        for _, lane_entry in lane_candidates[:MAX_LANES]:
+            point_position[slot] = lane_entry["point_position"]
+            point_vector[slot] = lane_entry["point_vector"]
+            point_orientation[slot] = lane_entry["point_orientation"]
+            point_side[slot] = lane_entry["point_side"]
+            polygon_center[slot] = lane_entry["polygon_center"]
+            polygon_position[slot] = lane_entry["polygon_position"]
+            polygon_orientation[slot] = lane_entry["polygon_orientation"]
+            polygon_type[slot] = lane_entry["polygon_type"]
+            polygon_on_route[slot] = any(
+                self._polyline_is_on_route(
+                    lane_entry["route_check_points"], ref_valid_points
+                )
+                for ref_valid_points in ref_lines
+            )
+            polygon_has_speed_limit[slot] = lane_entry["polygon_has_speed_limit"]
+            polygon_speed_limit[slot] = lane_entry["polygon_speed_limit"]
+            polygon_road_block_id[slot] = lane_entry["polygon_road_block_id"]
+            slot += 1
+
+        for _, crosswalk_entry in crosswalk_candidates[:MAX_CROSSWALKS]:
+            point_position[slot] = crosswalk_entry["point_position"]
+            point_vector[slot] = crosswalk_entry["point_vector"]
+            point_orientation[slot] = crosswalk_entry["point_orientation"]
+            point_side[slot] = crosswalk_entry["point_side"]
+            polygon_center[slot] = crosswalk_entry["polygon_center"]
+            polygon_position[slot] = crosswalk_entry["polygon_position"]
+            polygon_orientation[slot] = crosswalk_entry["polygon_orientation"]
+            polygon_type[slot] = POLYGON_TYPE_CROSSWALK
+            slot += 1
+
+        map_features = {
+            "point_position": point_position,
+            "point_vector": point_vector,
+            "point_side": point_side,
+            "point_orientation": point_orientation,
+            "polygon_center": polygon_center,
+            "polygon_position": polygon_position,
+            "polygon_orientation": polygon_orientation,
+            "polygon_type": polygon_type,
+            "polygon_on_route": polygon_on_route,
+            "polygon_tl_status": polygon_tl_status,
+            "polygon_has_speed_limit": polygon_has_speed_limit,
+            "polygon_speed_limit": polygon_speed_limit,
+            "polygon_road_block_id": polygon_road_block_id,
+        }
+        notes = {
+            "lane_candidate_count": len(lane_candidates),
+            "lane_kept_count": min(MAX_LANES, len(lane_candidates)),
+            "crosswalk_candidate_count": len(crosswalk_candidates),
+            "crosswalk_kept_count": min(MAX_CROSSWALKS, len(crosswalk_candidates)),
+            "lane_connector_heuristic": "junction_id or non-NO_TURN => lane_connector",
+            "traffic_light_status": "all UNKNOWN (Apollo feed not wired to live TL state)",
+        }
+        return map_features, notes
+
+    def _build_map_features_global_uncached(
+        self,
+        map_graph: dict,
+        ego_global_xy: np.ndarray,
+        reference_line: Dict[str, np.ndarray],
     ) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
         lane_candidates: List[Tuple[float, dict]] = []
         for lane in map_graph.get("lanes", []):
@@ -1599,6 +1777,91 @@ class ApolloPlutoDataloader(Dataloader):
             "traffic_light_status": "all UNKNOWN (Apollo feed not wired to live TL state)",
         }
         return map_features, notes
+
+    def _prepare_map_feature_cache(self, map_graph: dict) -> Dict[str, Any]:
+        lane_entries: List[Dict[str, Any]] = []
+        for lane in map_graph.get("lanes", []):
+            center = np.array(lane["central"], dtype=np.float64)[:, :2]
+            left = np.array(lane["left"], dtype=np.float64)[:, :2]
+            right = np.array(lane["right"], dtype=np.float64)[:, :2]
+            centerline = _resample_polyline(center, LANE_POINTS + 1)
+            left_bound = _resample_polyline(left, LANE_POINTS + 1)
+            right_bound = _resample_polyline(right, LANE_POINTS + 1)
+            edges = np.stack([centerline, left_bound, right_bound], axis=0)
+            point_position = np.zeros((3, LANE_POINTS, 2), dtype=np.float64)
+            point_vector = np.zeros((3, LANE_POINTS, 2), dtype=np.float64)
+            point_orientation = np.zeros((3, LANE_POINTS), dtype=np.float64)
+            point_position[:] = edges[:, :-1]
+            point_vector[:] = edges[:, 1:] - edges[:, :-1]
+            point_orientation[:] = np.arctan2(
+                point_vector[:, :, 1], point_vector[:, :, 0]
+            )
+            speed_limit = float(lane.get("speed_limit") or 0.0)
+            lane_entries.append(
+                {
+                    "distance_points": center,
+                    "route_check_points": centerline[:-1],
+                    "point_position": point_position,
+                    "point_vector": point_vector,
+                    "point_orientation": point_orientation,
+                    "point_side": np.arange(3, dtype=np.int8),
+                    "polygon_center": np.array(
+                        [
+                            centerline[LANE_POINTS // 2, 0],
+                            centerline[LANE_POINTS // 2, 1],
+                            point_orientation[0, LANE_POINTS // 2],
+                        ],
+                        dtype=np.float64,
+                    ),
+                    "polygon_position": centerline[0],
+                    "polygon_orientation": float(point_orientation[0, 0]),
+                    "polygon_type": self._infer_lane_polygon_type(lane),
+                    "polygon_has_speed_limit": speed_limit > 0,
+                    "polygon_speed_limit": speed_limit,
+                    "polygon_road_block_id": self._safe_int(lane.get("road_id")),
+                }
+            )
+
+        crosswalk_entries: List[Dict[str, Any]] = []
+        for polygon in map_graph.get("crosswalks", {}).values():
+            polygon_loop = np.array([point[:2] for point in polygon], dtype=np.float64)
+            if len(polygon_loop) >= 2 and not np.allclose(
+                polygon_loop[0], polygon_loop[-1]
+            ):
+                polygon_loop = np.vstack([polygon_loop, polygon_loop[0]])
+            centerline = _resample_polyline(polygon_loop, LANE_POINTS + 1)
+            left_bound = np.roll(centerline, -1, axis=0)
+            right_bound = np.roll(centerline, 1, axis=0)
+            edges = np.stack([centerline, left_bound, right_bound], axis=0)
+            point_position = np.zeros((3, LANE_POINTS, 2), dtype=np.float64)
+            point_vector = np.zeros((3, LANE_POINTS, 2), dtype=np.float64)
+            point_orientation = np.zeros((3, LANE_POINTS), dtype=np.float64)
+            point_position[:] = edges[:, :-1]
+            point_vector[:] = edges[:, 1:] - edges[:, :-1]
+            point_orientation[:] = np.arctan2(
+                point_vector[:, :, 1], point_vector[:, :, 0]
+            )
+            crosswalk_entries.append(
+                {
+                    "distance_points": polygon_loop,
+                    "point_position": point_position,
+                    "point_vector": point_vector,
+                    "point_orientation": point_orientation,
+                    "point_side": np.arange(3, dtype=np.int8),
+                    "polygon_center": np.array(
+                        [
+                            centerline[LANE_POINTS // 2, 0],
+                            centerline[LANE_POINTS // 2, 1],
+                            point_orientation[0, LANE_POINTS // 2],
+                        ],
+                        dtype=np.float64,
+                    ),
+                    "polygon_position": centerline[0],
+                    "polygon_orientation": float(point_orientation[0, 0]),
+                }
+            )
+
+        return {"lanes": lane_entries, "crosswalks": crosswalk_entries}
 
     @staticmethod
     def _infer_lane_polygon_type(lane: dict) -> int:

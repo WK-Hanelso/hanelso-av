@@ -19,6 +19,7 @@ from nuplan.planning.simulation.trajectory.trajectory_sampling import Trajectory
 
 from .forward_simulation.forward_simulator import ForwardSimulator
 from .common.enum import StateIndex
+from simulation import perf
 
 
 class EmergencyBrake:
@@ -77,7 +78,8 @@ class EmergencyBrake:
             estop=True,
             soft_brake=soft_brake,
         )
-        rollout = simulator.forward(origin_trajectory[None, ...], ego_state)[0]
+        with perf.section("postprocess.emergency_brake.forward_sim"):
+            rollout = simulator.forward(origin_trajectory[None, ...], ego_state)[0]
 
         ego_states, current_time_point = [], ego_state.time_point
         delta_t = TimePoint(int(self._trajectory_sampling.interval_length * 1e6))

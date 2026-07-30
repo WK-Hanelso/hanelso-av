@@ -26,6 +26,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
+from simulation import perf
 from .base import Renderer, register_renderer
 
 
@@ -81,7 +82,7 @@ class NuplanOfficialRenderer(Renderer):
                 "route.json has no destination_xy: NuplanScenarioRender plots "
                 "mission_goal unconditionally, so it cannot be None."
             )
-        stride = int(sim_cfg.get("stride", 2))
+        stride = int(sim_cfg.get("stride", 1))
         dt = float(clip["dt"])
         sample_interval = dt * stride if mode == "open_loop" else dt
         self._mission_goal = StateSE2(
@@ -102,15 +103,16 @@ class NuplanOfficialRenderer(Renderer):
         planning_local, candidates_local, predictions, candidate_index = nuplan_overlays(
             frame.get("post"), frame["output"], build
         )
-        self._render(
-            out_path,
-            scene_context=build.scene_context,
-            iteration_index=int(frame["iteration"]),
-            planning_local=planning_local,
-            candidates_local=candidates_local,
-            predictions=predictions,
-            candidate_index=candidate_index,
-        )
+        with perf.section("renderer.nuplan.total"):
+            self._render(
+                out_path,
+                scene_context=build.scene_context,
+                iteration_index=int(frame["iteration"]),
+                planning_local=planning_local,
+                candidates_local=candidates_local,
+                predictions=predictions,
+                candidate_index=candidate_index,
+            )
 
     def _render(
         self,
@@ -159,17 +161,19 @@ class NuplanOfficialRenderer(Renderer):
         )
         self._renderer.scenario_manager = scenario_manager
 
-        img = self._renderer.render_from_simulation(
-            current_input=current_input,
-            initialization=initialization,
-            route_roadblock_ids=route_roadblock_ids,
-            planning_trajectory=planning_local,
-            candidate_trajectories=candidates_local,
-            predictions=predictions,
-            candidate_index=candidate_index,
-            return_img=True,
-        )
-        plt.imsave(out_path, img)
+        with perf.section("renderer.nuplan.render_core"):
+            img = self._renderer.render_from_simulation(
+                current_input=current_input,
+                initialization=initialization,
+                route_roadblock_ids=route_roadblock_ids,
+                planning_trajectory=planning_local,
+                candidate_trajectories=candidates_local,
+                predictions=predictions,
+                candidate_index=candidate_index,
+                return_img=True,
+            )
+        with perf.section("io.png_save"):
+            plt.imsave(out_path, img)
 
 
 register_renderer("nuplan", NuplanOfficialRenderer)
