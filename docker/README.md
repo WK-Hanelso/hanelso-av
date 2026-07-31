@@ -7,21 +7,32 @@
 - **모델 실추론**(GPU) → 이미지는 **모델이 소유**하고 `<모델>-inf`로 명명한다.
   planning 모듈 config의 `env="pluto-inf"` — 그 모델의 추론 환경(torch/CUDA 버전)은
   모델 config가 결정하고, 파이프라인은 이름만 참조한다.
-- 하드웨어 변형은 **태그**로 구분한다: `pluto-inf:cu116`(현 서버 RTX 2060),
-  향후 `pluto-inf:cu121` 등. `latest`는 현 서버 기준.
+- GPU(sm 대역) 변형은 **하나의 pluto-inf Dockerfile + build-arg**로 만들고 **태그**로 구분한다:
+  `pluto-inf:cu116`(Turing~Ampere, sm_75/86 — 2060·A6000), `pluto-inf:cu121`(Ada, sm_89 — 5880).
+  새 GPU = build-arg 세트 하나 추가. `latest`는 현 서버 기준.
 
 ## 구성
 
 | 경로 | 이미지 | 내용 |
 |---|---|---|
 | `base/` | `swm-base:latest` | python3.9 + torch 1.12 **CPU** + 검증 freeze + nuplan-devkit. 전 파이프라인(parse→input→추론(CPU)→sim→mp4) 컨테이너 검증됨. 빌드/사용법은 `base/README.md`. |
-| `pluto-inf/` | `pluto-inf:cu116` | nvidia/cuda 11.6.2 + python3.9 + torch 1.12.0+cu116 + base freeze 재사용(--no-deps) + nuplan-devkit. GPU 실추론 전용. |
+| `pluto-inf/` | `pluto-inf:cu116` (외 arch 태그) | nvidia/cuda + python3.9 + torch(+cuXXX) + **자기 requirements.txt**(base 독립) + nuplan-devkit. 하나의 Dockerfile이 build-arg로 GPU 플랫폼별 빌드. GPU 전 파이프라인(추론·sim·mp4). |
 
 ## 빌드
 
 ```bash
+# CPU 공용
 docker build -t swm-base:latest -f docker/base/Dockerfile docker/base/
-docker build -t pluto-inf:cu116 -t pluto-inf:latest -f docker/pluto-inf/Dockerfile docker/
+
+# GPU (pluto-inf) — 하나의 Dockerfile이 GPU 플랫폼별 변형을 build-arg로 빌드.
+# 컨텍스트 = docker/pluto-inf/ (자기 requirements.txt, base 참조 없음)
+#   2060·A6000 (Turing~Ampere, sm_75/86) — 기본값
+docker build -t pluto-inf:cu116 -t pluto-inf:latest -f docker/pluto-inf/Dockerfile docker/pluto-inf/
+#   5880 (Ada, sm_89) — Ada 서버에서 빌드·검증
+docker build -t pluto-inf:cu121 \
+  --build-arg CUDA_TAG=12.1.1 --build-arg TORCH_VERSION=2.1.2 \
+  --build-arg TORCH_CU=cu121 --build-arg TORCHVISION_VERSION=0.16.2 \
+  -f docker/pluto-inf/Dockerfile docker/pluto-inf/
 ```
 
 ## GPU 실추론 실행
