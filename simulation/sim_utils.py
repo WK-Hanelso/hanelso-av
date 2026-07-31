@@ -11,8 +11,6 @@ import numpy as np
 
 from calibration.vehicle import max_tire_angle, to_vehicle_parameters
 
-PROGRESS_WINDOW = 80  # frames scanned ahead for progress alignment
-
 CATEGORY_COLORS = {
     "vehicle": "#2563eb",
     "pedestrian": "#f97316",

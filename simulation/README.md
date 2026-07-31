@@ -32,18 +32,22 @@ python3 simulation/render_sim.py configs/e100bt25.py --mode closed_loop --render
 
 ## closed-loop 스텝 구조 (`drivers/model_driven.py`)
 
-1. **feature**: `ApolloPlutoDataloader.build_frame(clip, prog_j, sim_ego=…)` — ego row는
-   주입된 sim ego-history(21스텝)만 사용, agent/static은 로그 프레임 `prog_j`에서 fetch.
+1. **feature**: `ApolloPlutoDataloader.build_frame(clip, log_idx, sim_ego=…)` — ego row는
+   주입된 sim ego-history(21스텝)만 사용, agent/static은 로그 프레임 `log_idx`에서 fetch.
    ego 로그 미래는 어떤 경로로도 참조하지 않는다(leakage 없음).
 2. **plan**: `policy.infer` → `PlutoPostProcessor.run` → best 궤적(global).
 3. **전파**: `[현재 포즈 + best 80스텝]`(81,3)을 원본 pluto `ForwardSimulator(dt=0.1,
    num_frames=1)`(BatchLQR + kinematic bicycle)에 넣어 1스텝 전진, state array에서
    `EgoState` 복원.
-4. **agent 재fetch(progress-정렬 하이브리드, PIPELINE.md §4.4)**:
-   `matched = prog_j + argmin ||log_ego[prog_j:prog_j+80] − sim_ego||`,
-   `prog_j = max(matched, prog_j+1)` — ego가 앞서면 fast-forward, 멈춰도 최소 1프레임 전진.
+4. **agent 재생(시간축, issue #1)**: 스텝의 로그 프레임은 경과 sim 시간으로 고정 —
+   `log_idx = min(start + step, n_samples−1)`. sim ego가 어떻게 움직이든 주변 agent는
+   실제 로그의 시간 흐름 그대로 등장/이동한다. feature(build_frame t0)·충돌 체크·렌더가
+   전부 같은 `log_idx`를 사용(한 프레임 = 한 로그 시각). ego-GT 발산 비교만
+   `time_idx = start + step + 1`(전파 후 ego와 같은 시각의 로그 ego).
 5. 렌더 + 지표 기록(스텝 변위, 시간/progress 기준 로그 대비 발산, drivable 여부,
-   shapely oriented-box 충돌, emergency brake).
+   shapely oriented-box 충돌, emergency brake). progress-정렬 발산 지표
+   (`divergence_progress_aligned_m`)는 ego 궤적 비교용 metric으로만 유지 —
+   agent 선택에는 관여하지 않는다.
 
 ## 어댑터 sim 주입 계약 (`planning/models/pluto/dataloader.py`)
 

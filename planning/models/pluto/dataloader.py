@@ -830,7 +830,7 @@ class ApolloPlutoDataloader(Dataloader):
     #   }
     # Ego log data is NOT read when sim_ego is given (no ego-future
     # leakage); agents/statics come from the log frame t0_index chosen by
-    # the caller (progress-aligned in closed-loop).
+    # the caller (time-axis replay in closed-loop, issue #1).
 
     def prepare_clip(
         self,

@@ -3,10 +3,15 @@
 Each step builds a feature from the injected sim ego-history (no ego
 log/future leakage), runs forward + post-processing, then propagates the ego
 one step with the ORIGINAL pluto ForwardSimulator (BatchLQR + kinematic
-bicycle).  Agents are re-fetched from the bag with the progress-aligned
-hybrid rule (PIPELINE.md 4.4):
-    matched = prog_j + argmin ||log_ego[prog_j:prog_j+W] - sim_ego||
-    prog_j  = max(matched, prog_j + 1)
+bicycle).  Agents replay the log on its own time axis (issue #1):
+    log_idx = min(start + step, n_samples - 1)
+so surrounding agents appear/move exactly when they did in the log,
+independent of how the sim ego moves.  Time indices per step:
+    log_idx  = start + step      -- decision-time log frame: agent fetch,
+                                    feature t0, collision check, render
+    time_idx = start + step + 1  -- post-step log frame: ego-GT divergence
+                                    metric only (ego is propagated 1 step
+                                    before being compared)
 """
 
 from __future__ import annotations
@@ -20,7 +25,6 @@ import numpy as np
 import torch
 
 from simulation.sim_utils import (
-    PROGRESS_WINDOW,
     build_ego_state_from_array,
     calibration_rear_axle_to_center,
     check_collision,
@@ -78,7 +82,7 @@ class ModelDrivenDriver(EgoDriver):
             max_steering_angle=float(clip["max_tire_angle_rad"]),
         )
 
-        prog_j = start
+        match_j = start  # monotone pointer for the progress-aligned divergence METRIC only
         sim_trace = [ego_state_to_pose(ego_state)]
         records: List[Dict[str, Any]] = []
         collisions_total: List[Dict[str, Any]] = []
@@ -87,16 +91,13 @@ class ModelDrivenDriver(EgoDriver):
             t_begin = time.time()
             pose = ego_state_to_pose(ego_state)
 
-            # --- progress-aligned agent fetch (PIPELINE.md 4.4 hybrid rule)
-            if step > 0:
-                hi = min(prog_j + PROGRESS_WINDOW, n_samples)
-                window = dataset["ego_positions"][prog_j:hi]
-                matched = prog_j + int(
-                    np.argmin(np.linalg.norm(window - pose[:2], axis=1))
-                )
-                prog_j = min(max(matched, prog_j + 1), n_samples - 1)
+            # --- time-axis agent replay (issue #1): the log frame for this
+            # step is fixed by elapsed sim time, never by ego progress.  The
+            # same index feeds the feature (build_frame t0), the collision
+            # check and the render, so one frame uses exactly one log time.
+            log_idx = min(start + step, n_samples - 1)
 
-            # --- feature from sim ego history + log agents at prog_j
+            # --- feature from sim ego history + log agents at log_idx
             dyn = ego_state.dynamic_car_state
             speed = float(np.hypot(dyn.rear_axle_velocity_2d.x, dyn.rear_axle_velocity_2d.y))
             sim_ego = {
@@ -118,7 +119,7 @@ class ModelDrivenDriver(EgoDriver):
                 ),
                 "ego_state": ego_state,
             }
-            build = adapter.build_frame(clip, prog_j, sim_ego=sim_ego)
+            build = adapter.build_frame(clip, log_idx, sim_ego=sim_ego)
             with torch.inference_mode():
                 output = self.policy.infer(build.feature)
             post = self.postprocessor.run(
@@ -161,12 +162,19 @@ class ModelDrivenDriver(EgoDriver):
 
             # --- metrics
             step_disp = float(np.linalg.norm(new_pose[:2] - pose[:2]))
+            # ego-GT comparison time: new_pose is the POST-step ego, so the
+            # matching log time is one frame after the decision-time log_idx.
             time_idx = min(start + step + 1, n_samples - 1)
             div_time = float(np.linalg.norm(new_pose[:2] - dataset["ego_positions"][time_idx]))
-            div_prog = float(np.linalg.norm(new_pose[:2] - dataset["ego_positions"][prog_j]))
+            # progress-aligned divergence: ego-trajectory metric only (kept
+            # per issue #1) -- nearest log ego position at/after match_j.
+            # It never feeds agent selection.
+            seg = dataset["ego_positions"][match_j:]
+            match_j = match_j + int(np.argmin(np.linalg.norm(seg - new_pose[:2], axis=1)))
+            div_prog = float(np.linalg.norm(new_pose[:2] - dataset["ego_positions"][match_j]))
             dam = build.scene_context["drivable_area_map"]
             in_drivable = bool(dam.points_in_polygons(new_pose[None, :2]).any())
-            agents = frame_agents(dataset, prog_j, new_pose[:2], view_radius * 1.5)
+            agents = frame_agents(dataset, log_idx, new_pose[:2], view_radius * 1.5)
             hits = check_collision(new_pose, ego_dims, rear_axle_to_center, agents)
             if hits:
                 collisions_total.append({"step": step, "tokens": hits})
@@ -175,7 +183,7 @@ class ModelDrivenDriver(EgoDriver):
             records.append(
                 {
                     "step": step,
-                    "prog_j": prog_j,
+                    "log_idx": log_idx,
                     "sim_xy": [round(float(new_pose[0]), 3), round(float(new_pose[1]), 3)],
                     "speed_mps": round(new_speed, 3),
                     "step_disp_m": round(step_disp, 4),
@@ -204,15 +212,15 @@ class ModelDrivenDriver(EgoDriver):
                     "best_traj_global": best_global,
                     "log_ego_pose": np.array(
                         [
-                            dataset["ego_positions"][prog_j][0],
-                            dataset["ego_positions"][prog_j][1],
-                            dataset["ego_headings"][prog_j],
+                            dataset["ego_positions"][log_idx][0],
+                            dataset["ego_positions"][log_idx][1],
+                            dataset["ego_headings"][log_idx],
                         ]
                     ),
                     "sim_trace": np.asarray(sim_trace),
                     "title": f"{clip['config'].get('clip_id', '')} closed_loop (ego=model)",
                     "info_lines": [
-                        f"step {step:4d}  prog_j {prog_j:4d}/{n_samples}",
+                        f"step {step:4d}  log_idx {log_idx:4d}/{n_samples}",
                         f"speed {new_speed:5.2f} m/s  step {step_disp:5.3f} m",
                         f"div(time) {div_time:6.2f} m  div(prog) {div_prog:6.2f} m",
                         f"in_drivable={in_drivable}  ebrake={emergency}  coll={len(hits)}",
@@ -222,7 +230,7 @@ class ModelDrivenDriver(EgoDriver):
             )
             ego_state = new_ego_state
             print(
-                f"[closed_loop] step {step + 1}/{steps} prog_j={prog_j} "
+                f"[closed_loop] step {step + 1}/{steps} log_idx={log_idx} "
                 f"speed={new_speed:.2f} step={step_disp:.3f}m div_t={div_time:.2f}m "
                 f"drivable={in_drivable} ebrake={emergency} coll={len(hits)} "
                 f"({records[-1]['wall_time_sec']}s)",
