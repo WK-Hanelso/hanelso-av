@@ -810,7 +810,7 @@ class ApolloPlutoDataloader(Dataloader):
     #
     # C-SWM-018: repeated per-frame builds for the simulation driver.
     #   prepare_clip()  loads/caches everything that is frame-independent
-    #                   (parsed tables, route payload, ApolloMap).
+    #                   (parsed tables, route.json event history, ApolloMap).
     #   build_frame()   builds a PlutoFeature for an arbitrary log frame
     #                   (open-loop) or with an injected sim ego history
     #                   (closed-loop).  Normalization/packing reuses the
@@ -858,6 +858,11 @@ class ApolloPlutoDataloader(Dataloader):
             "dataset": dataset,
             "map_graph": map_graph,
             "route_payload": route_payload,
+            # issue #2: per-event route derivations (lane_ids -> public
+            # roadblock ids), keyed by event timestamp_ns.  Frames that keep
+            # the same routing event hit this cache; an event switch
+            # recomputes exactly once.
+            "route_event_cache": {},
             "map_api": apollo_map,
             "map_name": map_name,
             "dt": DT,
@@ -876,11 +881,19 @@ class ApolloPlutoDataloader(Dataloader):
         """Builds one PlutoFeature frame from a prepare_clip() bundle.
 
         sim_ego=None  -> open-loop: ego history/state from the log at
-                         t0_index (route t0 check skipped: the clip-level
-                         route payload is reused for every frame).
+                         t0_index (route t0 check skipped: the route event
+                         is re-selected per frame, see below).
         sim_ego=dict  -> closed-loop: ego row comes exclusively from the
                          injected sim history; agents/statics are fetched
                          from log frame t0_index.
+
+        Route (issue #2): every frame selects the routing event that is the
+        latest one at the frame's own log timestamp (sample timestamp at
+        t0_index), so a reroute published mid-clip switches the reference
+        lines / route_lane_dict / on_route flags once the sim passes its
+        time.  All route consumers of one frame (ScenarioManager, map
+        features, scene_context handed to postprocess/render) derive from
+        that single event — no mixing within a frame.
         """
         PlutoFeature = self._import_pluto_feature()
         t0_reason = "sim_open_loop_frame" if sim_ego is None else "sim_closed_loop_frame"
@@ -894,6 +907,7 @@ class ApolloPlutoDataloader(Dataloader):
             ego_override=sim_ego,
             route_payload=clip["route_payload"],
             map_api=clip["map_api"],
+            route_event_cache=clip.setdefault("route_event_cache", {}),
         )
         normalized = PlutoFeature.normalize(
             raw_data,
@@ -920,6 +934,7 @@ class ApolloPlutoDataloader(Dataloader):
         ego_override: Optional[Dict[str, Any]] = None,
         route_payload: Optional[Dict[str, Any]] = None,
         map_api: Optional[Any] = None,
+        route_event_cache: Optional[Dict[int, Dict[str, Any]]] = None,
     ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
         sample_tokens = dataset["sample_tokens"]
         sample_ts_sec = dataset["sample_ts_sec"]
@@ -1030,6 +1045,17 @@ class ApolloPlutoDataloader(Dataloader):
 
         if route_payload is None:
             route_payload = self._load_route_payload(parsed_path, t0_index, dataset)
+        # issue #2: the frame's own log time decides which routing event
+        # applies (t0 path and sim frame path share this selection; for the
+        # t0 path it reproduces the parse-time t0 selection).
+        frame_ts_ns = int(dataset["samples"][t0_index]["timestamp"])
+        route_payload = self._route_payload_at_time(
+            route_payload,
+            frame_ts_ns,
+            map_graph=map_graph,
+            map_api=map_api,
+            cache=route_event_cache,
+        )
         if ego_override is None:
             ego_state = self._build_ego_state(dataset, t0_index)
         else:
@@ -1051,6 +1077,8 @@ class ApolloPlutoDataloader(Dataloader):
             "selected_event_topic"
         )
         route_debug["route_lane_count"] = len(scenario_bundle["route_lane_ids"])
+        route_debug["route_event_frame_ts_ns"] = frame_ts_ns
+        route_debug["route_event_count"] = len(self._route_events(route_payload))
         map_features, map_notes = self._build_map_features_global(
             map_graph=map_graph,
             ego_global_xy=origin_xy,
@@ -1237,17 +1265,22 @@ class ApolloPlutoDataloader(Dataloader):
             if map_api is not None
             else ApolloMap(map_name=map_name or None, payload=map_graph)
         )
-        original_roadblock_ids = self._route_roadblocks_from_lane_ids(
-            route_lane_ids, map_graph
-        )
-        if not original_roadblock_ids:
+        # issue #2: reuse the per-event lane->roadblock resolution when the
+        # payload carries one (event-keyed cache in build_frame); otherwise
+        # resolve from scratch (t0/build path, legacy payloads).
+        public_roadblock_ids = route_payload.get("_route_public_roadblock_ids")
+        if public_roadblock_ids is None:
+            original_roadblock_ids = self._route_roadblocks_from_lane_ids(
+                route_lane_ids, map_graph
+            )
+            public_roadblock_ids = [
+                apollo_map.to_public_roadblock_id(rb_id)
+                for rb_id in original_roadblock_ids
+            ]
+        if not public_roadblock_ids:
             raise ValueError(
                 "route.json route_lane_ids do not map to any roadblocks in map_graph."
             )
-        public_roadblock_ids = [
-            apollo_map.to_public_roadblock_id(rb_id)
-            for rb_id in original_roadblock_ids
-        ]
 
         # Same radius formula as PlutoPlanner: eval_dt * eval_num_frames * 60 / 4.
         radius = 0.1 * 80 * 60.0 / 4.0
@@ -1624,6 +1657,81 @@ class ApolloPlutoDataloader(Dataloader):
             return int(value)
         digits = "".join(ch for ch in str(value) if ch.isdigit())
         return int(digits) if digits else 0
+
+    # ------------------------------------------------- route events (issue #2)
+
+    @staticmethod
+    def _route_events(route_payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Chronologically sorted unique routing events from route.json
+        ``all_sequences`` (empty for legacy payloads without event history)."""
+        events = route_payload.get("all_sequences") or []
+        return sorted(events, key=lambda event: int(event["timestamp_ns"]))
+
+    @classmethod
+    def _select_route_event(
+        cls, route_payload: Dict[str, Any], frame_ts_ns: int
+    ) -> Optional[Dict[str, Any]]:
+        """Picks the routing event active at the frame's log time (issue #2).
+
+        Latest event with ``timestamp_ns <= frame_ts_ns``; frames before the
+        first event fall back to the earliest one.  Returns None for legacy
+        payloads without ``all_sequences`` (callers then keep the clip-level
+        payload unchanged)."""
+        events = cls._route_events(route_payload)
+        if not events:
+            return None
+        selected = events[0]
+        for event in events:
+            if int(event["timestamp_ns"]) <= int(frame_ts_ns):
+                selected = event
+            else:
+                break
+        return selected
+
+    def _route_payload_at_time(
+        self,
+        route_payload: Dict[str, Any],
+        frame_ts_ns: int,
+        map_graph: Optional[dict] = None,
+        map_api: Optional[Any] = None,
+        cache: Optional[Dict[int, Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """Route payload as of the frame's log time (issue #2).
+
+        Replaces the previous clip-level payload reuse: each frame re-selects
+        the latest routing event at its own log timestamp, so a reroute
+        published mid-clip switches the route once the sim passes its time.
+        The per-event derivation (event fields + lane_ids -> public roadblock
+        ids when map_graph/map_api are available) is cached by event
+        ``timestamp_ns`` (``cache=clip["route_event_cache"]``): frames that
+        keep the same event hit the cache, an event switch recomputes once.
+        """
+        event = self._select_route_event(route_payload, frame_ts_ns)
+        if event is None:
+            return route_payload
+        key = int(event["timestamp_ns"])
+        if cache is not None and key in cache:
+            return cache[key]
+        effective = dict(route_payload)
+        effective["route_lane_ids"] = [
+            str(lane_id) for lane_id in event.get("lane_ids", [])
+        ]
+        effective["destination_xy"] = event.get(
+            "destination_xy", route_payload.get("destination_xy")
+        )
+        effective["selected_event_timestamp_ns"] = key
+        effective["selected_event_topic"] = event.get("topic")
+        if map_graph is not None and map_api is not None:
+            original_roadblock_ids = self._route_roadblocks_from_lane_ids(
+                effective["route_lane_ids"], map_graph
+            )
+            effective["_route_public_roadblock_ids"] = [
+                map_api.to_public_roadblock_id(rb_id)
+                for rb_id in original_roadblock_ids
+            ]
+        if cache is not None:
+            cache[key] = effective
+        return effective
 
     @staticmethod
     def _load_route_payload(

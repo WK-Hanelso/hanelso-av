@@ -51,8 +51,14 @@ python3 simulation/render_sim.py configs/e100bt25.py --mode closed_loop --render
 
 ## 어댑터 sim 주입 계약 (`planning/models/pluto/dataloader.py`)
 
-- `prepare_clip(parsed_dir, map_graph, config)` — 프레임 불변 요소(파싱 테이블, route.json,
-  ApolloMap) 1회 로드/캐시. route t0 검사는 클립 단위 재사용을 위해 sim 경로에서 생략.
+- `prepare_clip(parsed_dir, map_graph, config)` — 프레임 불변 요소(파싱 테이블, route.json
+  이벤트 이력, ApolloMap) 1회 로드/캐시. route t0 검사는 sim 경로에서 생략 —
+  대신 각 프레임이 자기 로그 시각으로 라우팅 이벤트를 재선택한다(issue #2).
+- route 이벤트 선택(issue #2): 각 프레임은 `route.json all_sequences` 중
+  `timestamp_ns ≤ 프레임 로그 시각`인 최신 이벤트를 사용(이전엔 t0 시점 선택본을 전
+  프레임에 재사용). reroute 시각을 지나면 reference line·route_lane_dict·on_route가
+  새 경로로 전환되며, 이벤트 단위 lane→roadblock 해석은 `route_event_cache`
+  (이벤트 timestamp 키)로 캐시 — 같은 이벤트 구간은 캐시 히트, 전환 시 1회만 재계산.
 - `build_frame(clip, t0_index, sim_ego=None)` — `sim_ego=None`이면 open-loop(로그 ego),
   dict면 closed-loop. 정규화/pack은 기존 `build()`와 동일 코드 경로.
 - `sim_ego` 키: `position(21,2)` `heading(21,)` `velocity_global(21,2)` `valid_mask(21,)`
@@ -61,5 +67,6 @@ python3 simulation/render_sim.py configs/e100bt25.py --mode closed_loop --render
 
 ## 한계
 
-- route는 클립 단위 route.json 하나를 전 프레임에 재사용 — 중간 reroute 이벤트는 미반영.
 - traffic light 상태 없음(전부 UNKNOWN), agent는 로그 재생(반응 없음, non-reactive).
+- 렌더러 mission_goal(`destination_xy`)은 클립 단위 고정 — 프레임별 이벤트의
+  destination이 다른 클립이면 미반영(현재 검증 클립들은 전 이벤트 destination 동일).
