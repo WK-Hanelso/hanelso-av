@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import numpy.typing as npt
-from shapely.geometry import LineString, Point, Polygon
+from shapely.geometry import LineString, MultiPolygon, Point, Polygon
+from shapely.geometry.base import BaseGeometry
 from shapely.ops import unary_union
 
 from nuplan.common.actor_state.state_representation import Point2D, StateSE2
@@ -20,9 +23,123 @@ from nuplan.common.maps.abstract_map_objects import (
 )
 from nuplan.common.maps.maps_datatypes import RasterLayer, RasterMap, SemanticMapLayer
 
+logger = logging.getLogger(__name__)
+
 _EPS = 1e-6
 _LANE_INDEX_SPACING_M = 1.0
 _BASELINE_SPACING_M = 0.5
+
+# Below this ratio the discarded fragments are no longer negligible slivers, which
+# means the source map geometry degraded beyond the known bow-tie pattern.
+_MIN_AREA_RATIO_WARN = 0.95
+
+
+@dataclass
+class _PolygonRepairStats:
+    """Per-map-load tally of what :func:`_as_single_polygon` had to fix.
+
+    Aggregated over a whole map load so the adapter can emit a single summary
+    line instead of one message per element (and never per simulation frame).
+    """
+
+    total: int = 0
+    repaired: int = 0
+    multi_to_largest: int = 0
+    dropped: int = 0
+    min_area_ratio: Optional[float] = None
+
+    @property
+    def is_degraded(self) -> bool:
+        """True when the input geometry is worse than the known bow-tie pattern."""
+        if self.dropped:
+            return True
+        return self.min_area_ratio is not None and self.min_area_ratio < _MIN_AREA_RATIO_WARN
+
+    def _record_ratio(self, ratio: float) -> None:
+        if self.min_area_ratio is None or ratio < self.min_area_ratio:
+            self.min_area_ratio = ratio
+
+    def summary(self, label: str) -> str:
+        ratio = "n/a" if self.min_area_ratio is None else f"{self.min_area_ratio * 100.0:.2f}%"
+        return (
+            f"{label} {self.total} total / {self.repaired} repaired / "
+            f"{self.multi_to_largest} multi→largest (min area ratio {ratio}) / "
+            f"{self.dropped} dropped"
+        )
+
+
+def _as_single_polygon(
+    geometry: BaseGeometry,
+    stats: Optional[_PolygonRepairStats] = None,
+) -> Polygon:
+    """Coerce a freshly built geometry into a single, valid :class:`Polygon`.
+
+    Why this is needed
+    ------------------
+    A lane polygon is built by stitching the left boundary polyline to the
+    reversed right boundary polyline. When the two boundaries cross each other
+    the resulting ring self-intersects and forms a *bow tie*. ``buffer(0)``
+    repairs such a ring, but when the two lobes of the bow tie touch at a single
+    point shapely cannot express the result as one polygon and returns a
+    ``MultiPolygon`` instead. A ``MultiPolygon`` is a perfectly valid geometry,
+    so it passes ``is_valid`` / ``is_empty`` checks and gets stored silently -
+    but it has no ``.exterior``, so every consumer that needs an outline
+    (drivable-area rasterization, geometry/collision helpers, renderers, feature
+    builders) blows up later with ``AttributeError``. Guarding here, at every
+    point where a polygon is *created*, keeps the invariant "map polygons are
+    single polygons" true for consumers that do not exist yet.
+
+    Why the largest fragment is adopted
+    -----------------------------------
+    Measured on the shipped maps: AYG has 5 multi-part lanes out of 7936 and SEL
+    has 22 out of 20906. In every one of those 27 cases the largest fragment
+    holds 97.48%-100.00% of the total area (AYG min 99.34%, SEL min 97.48%); the
+    remainder is a sliver pinched off at the boundary crossing. Adopting the
+    largest fragment therefore reproduces the intended lane surface, and the
+    caller is told via ``stats`` when that assumption starts to weaken.
+
+    Note this must *not* be applied to a union of several lane polygons (see
+    :meth:`ApolloRoadblock.polygon`), where multiple parts are legitimate.
+
+    :param geometry: geometry just built from map source points.
+    :param stats: optional tally updated in place for the map-load summary log.
+    :return: a valid Polygon; empty when nothing could be recovered.
+    """
+    if stats is not None:
+        stats.total += 1
+
+    polygon = geometry
+    repaired = False
+    if not polygon.is_valid:
+        polygon = polygon.buffer(0)
+        repaired = True
+
+    if isinstance(polygon, Polygon):
+        if polygon.is_empty:
+            if stats is not None:
+                stats.dropped += 1
+            return Polygon()
+        if repaired and stats is not None:
+            stats.repaired += 1
+        return polygon
+
+    parts = [
+        geom
+        for geom in getattr(polygon, "geoms", [])
+        if isinstance(geom, Polygon) and not geom.is_empty and geom.area > 0.0
+    ]
+    if not parts:
+        if stats is not None:
+            stats.dropped += 1
+        return Polygon()
+
+    total_area = sum(part.area for part in parts)
+    largest = max(parts, key=lambda part: part.area)
+    if stats is not None:
+        stats.multi_to_largest += 1
+        if total_area > 0.0:
+            stats._record_ratio(largest.area / total_area)
+    return largest
 
 
 def _as_xy_array(points: Sequence[Sequence[float]]) -> npt.NDArray[np.float64]:
@@ -115,22 +232,24 @@ def _densify_xyh(points: Sequence[Sequence[float]], spacing_m: float) -> List[St
     return [StateSE2(float(x), float(y), float(h)) for (x, y), h in zip(dense_xy, headings)]
 
 
-def _lane_polygon(left: Sequence[Sequence[float]], right: Sequence[Sequence[float]]) -> Polygon:
+def _lane_polygon(
+    left: Sequence[Sequence[float]],
+    right: Sequence[Sequence[float]],
+    stats: Optional[_PolygonRepairStats] = None,
+) -> Polygon:
     left_xy = _as_xy_array(left)
     right_xy = _as_xy_array(right)
     ring = np.vstack([left_xy, right_xy[::-1]])
-    polygon = Polygon(ring)
-    if not polygon.is_valid:
-        polygon = polygon.buffer(0)
-    return polygon
+    return _as_single_polygon(Polygon(ring), stats)
 
 
-def _buffered_linestring_polygon(points: Sequence[Sequence[float]], width: float) -> Polygon:
+def _buffered_linestring_polygon(
+    points: Sequence[Sequence[float]],
+    width: float,
+    stats: Optional[_PolygonRepairStats] = None,
+) -> Polygon:
     line = LineString(_as_xy_array(points))
-    polygon = line.buffer(width, cap_style=2, join_style=2)
-    if not polygon.is_valid:
-        polygon = polygon.buffer(0)
-    return polygon
+    return _as_single_polygon(line.buffer(width, cap_style=2, join_style=2), stats)
 
 
 class ApolloPath(PolylineMapObject):
@@ -211,12 +330,25 @@ class ApolloRoadblock(RoadBlockGraphEdgeMapObject):
         self._outgoing_edges: List[ApolloRoadblock] = []
 
     @property
-    def polygon(self) -> Polygon:
+    def polygon(self) -> Union[Polygon, MultiPolygon]:
+        """Union of the interior lane polygons - may legitimately be a MultiPolygon.
+
+        Unlike a single lane polygon (see :func:`_as_single_polygon`), a
+        multi-part result here is *correct* geometry, not damage: a roadblock's
+        lanes can be physically disjoint (median strips, safety zones, pocket
+        lanes), so the union genuinely has several faces. Collapsing it to the
+        largest fragment would silently delete whole healthy lanes, so the
+        single-polygon guard is deliberately NOT applied to this union.
+
+        The only current consumer, ``remove_route_loops`` in
+        ``planning/nuplan_common/scenario_manager/utils/route_utils.py``, only
+        inserts this into an STRtree, queries it, and takes
+        ``intersection().area`` - all of which behave correctly on a
+        MultiPolygon. A future consumer that needs one face must iterate the
+        parts itself.
+        """
         if self._polygon is None:
-            polygon = unary_union(self._lane_polygons)
-            if hasattr(polygon, "geoms"):
-                polygon = unary_union([geom for geom in polygon.geoms])
-            self._polygon = polygon
+            self._polygon = unary_union(self._lane_polygons)
         return self._polygon
 
     def fast_distance_to_point(self, point: Point) -> float:
@@ -534,11 +666,18 @@ class ApolloMap(AbstractMap):
     def _build_objects(self, payload: dict) -> None:
         roadblocks = payload.get("roadblocks", {})
         lane_to_roadblock = {str(k): str(v) for k, v in payload.get("lane_to_roadblock", {}).items()}
+        lane_stats = _PolygonRepairStats()
+        crosswalk_stats = _PolygonRepairStats()
+        signal_stats = _PolygonRepairStats()
 
         for lane_payload in payload.get("lanes", []):
             original_id = str(lane_payload["id"])
             public_id = self.to_public_lane_id(original_id)
-            polygon = _lane_polygon(lane_payload["left"], lane_payload["right"])
+            polygon = _lane_polygon(lane_payload["left"], lane_payload["right"], lane_stats)
+            if polygon.is_empty:
+                # Unrecoverable geometry: excluded from the map rather than
+                # handed to consumers as an empty polygon.
+                continue
             lane = ApolloLane(
                 object_id=public_id,
                 original_id=original_id,
@@ -557,7 +696,14 @@ class ApolloMap(AbstractMap):
 
         for original_id, rb_payload in roadblocks.items():
             public_id = self.to_public_roadblock_id(original_id)
-            lane_polygons = [self._lanes_by_original[str(lane_id)].polygon for lane_id in rb_payload.get("lane_ids", [])]
+            lane_polygons = [
+                self._lanes_by_original[str(lane_id)].polygon
+                for lane_id in rb_payload.get("lane_ids", [])
+                if str(lane_id) in self._lanes_by_original
+            ]
+            if not lane_polygons:
+                # Every lane of this roadblock was excluded above.
+                continue
             roadblock = ApolloRoadblock(
                 object_id=public_id,
                 original_id=original_id,
@@ -603,17 +749,37 @@ class ApolloMap(AbstractMap):
 
         for original_id, polygon_points in payload.get("crosswalks", {}).items():
             public_id = self.to_public_id("crosswalk", str(original_id))
-            polygon = Polygon(_as_xy_array(polygon_points))
-            if not polygon.is_valid:
-                polygon = polygon.buffer(0)
+            polygon = _as_single_polygon(Polygon(_as_xy_array(polygon_points)), crosswalk_stats)
+            if polygon.is_empty:
+                continue
             self._crosswalks[public_id] = ApolloPolygonObject(public_id, polygon, str(original_id))
 
         for original_id, signal_payload in payload.get("signals", {}).items():
             public_id = self.to_public_id("signal", str(original_id))
-            polygon = _buffered_linestring_polygon(signal_payload["stop_line"], 0.5)
+            polygon = _buffered_linestring_polygon(signal_payload["stop_line"], 0.5, signal_stats)
+            if polygon.is_empty:
+                continue
             self._signals[public_id] = ApolloPolygonObject(public_id, polygon, str(original_id))
 
+        self._log_polygon_repairs(lane_stats, crosswalk_stats, signal_stats)
         self._register_aliases()
+
+    def _log_polygon_repairs(
+        self,
+        lane_stats: _PolygonRepairStats,
+        crosswalk_stats: _PolygonRepairStats,
+        signal_stats: _PolygonRepairStats,
+    ) -> None:
+        """Emit one polygon-repair summary per map load (never per frame)."""
+        grouped = (("lanes", lane_stats), ("crosswalks", crosswalk_stats), ("signals", signal_stats))
+        summary = "; ".join(stats.summary(label) for label, stats in grouped)
+        message = f"[ApolloMap] {self._map_name} polygon repair: {summary}"
+        if any(stats.is_degraded for _, stats in grouped):
+            # Fragments large enough to matter, or elements lost entirely:
+            # surface it so map quality regressions are caught early.
+            logger.warning("%s -- map geometry degraded beyond the known bow-tie pattern", message)
+        else:
+            logger.info("%s", message)
 
     def _build_indices(self) -> None:
         return None
