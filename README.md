@@ -69,21 +69,26 @@ record(.record) ─┬─▶ ① inspect_record   토픽/맵/차량 판정 (tool
                  │         scene_log · route · map_graph)
                  └─▶ ③ render_sim.py     closed_loop_nuplan 시뮬 → mp4 + metrics
 ```
-- ①② 파싱은 `.venv-apollo`(cyber_record + Apollo `pb2`), ③ 렌더/추론은 별도 nuPlan/torch env에서 돈다 (라이브러리·numpy 버전 충돌 회피).
-- env 경계를 넘는 지오메트리는 python list로 직렬화(버전 독립).
+- docker 이미지(swm-base/pluto-inf) 하나에 파싱·추론·렌더 의존성이 모두 있어, 세 스테이지가 컨테이너 **단일 환경**에서 돈다 (host `.venv-apollo` 불필요).
 
-### 빠른 시작
+### 빠른 시작 — `scripts/sim.sh` (docker 한 줄, 권장)
+
+**docker만 있으면 된다.** 파이썬 env 설치·`docker run` 타이핑이 필요 없다 — 런처가 이미지 확인(없으면 자동 빌드)·마운트·실행을 다 처리한다.
+
 ```bash
-# 0) 맵 그래프 1회 생성 (차량/맵 대응: E100→AYG, U100→SEL)
-.venv-apollo/bin/python parse_map.py --map <base_map.bin> --name <map_name>
+# CPU (기본)
+scripts/sim.sh data/bag/E100BT-25/20260716151711.record.00006
 
-# 1) 원샷 실행 — 파싱부터 렌더까지
-python3 run_sim.py <record 경로> --mode closed_loop --renderer nuplan --steps N
-#   --mode      closed_loop | open_loop
-#   --renderer  nuplan | matplotlib
-#   --device    cpu | cuda      --force  (parsed 계약 통과해도 재파싱)
+# GPU
+scripts/sim.sh data/bag/E100BT-25/20260716151711.record.00006 --gpu --steps 100
+
+# 옵션: --gpu  --steps N  --mode closed_loop|open_loop  --verbose  -h
 ```
-> `--steps`는 넉넉히 준다. record별 perception rate가 달라(frame dt ≠ 0.1) 부족하면 뒤가 잘린다 (실제시간 / 0.1 만큼).
+- **전제**: `docker` 설치 + bag이 있는 데이터 디스크(`/mnt/hdd_storage`) 마운트. 이미지는 없으면 런처가 **자동 빌드**(처음 한 번만, 수 분~십수 분).
+- **산출물**: `work/<clip>/sim/<mode>.mp4` (+ metrics json).
+- `--steps`는 넉넉히 준다. record별 perception rate가 달라(frame dt ≠ 0.1) 부족하면 뒤가 잘린다.
+
+> 런처 없이 직접(`docker run …` 또는 host env)은 [docker/README.md](docker/README.md) 참고.
 
 ### 모델 직접 추론 (planning 도메인)
 ```bash
