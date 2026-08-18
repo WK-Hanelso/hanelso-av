@@ -11,7 +11,9 @@
 ## 사용 예
 
 ```bash
-.venv-apollo/bin/python tools/parser_validation/validate.py \
+docker run --rm -v "$PWD":/workspace -w /workspace swm-base:latest \
+  -v /mnt/hdd_storage:/mnt/hdd_storage \
+  python tools/parser_validation/validate.py \
     --record data/bag/E100BT-25/20260716151711.record.00006
 # → work/validation/<clip>/{report.json, report.txt, scene_bev.png}
 ```

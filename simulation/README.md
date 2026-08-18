@@ -17,14 +17,19 @@ sim은 **오프라인 검증 경로**라 CPU(`swm-base` 이미지)로 돈다 —
 
 ## 실행
 
+실행은 항상 `docker run`(공용 이미지 `swm-base` — torch1.12 CPU + nuplan + shapely, natten은 순수 torch `native_nat`로 대체). 원샷은 `scripts/sim.sh`.
+
 ```bash
 # root config의 simulation 이름(예: closed_loop_nuplan)이 기본값, CLI로 override
-python3 simulation/render_sim.py configs/e100bt25.py
-python3 simulation/render_sim.py configs/e100bt25.py --mode open_loop --renderer matplotlib --steps 100
-python3 simulation/render_sim.py configs/e100bt25.py --mode closed_loop --renderer nuplan --steps 3
+docker run --rm -v "$PWD":/workspace -w /workspace swm-base:latest \
+  python simulation/render_sim.py configs/e100bt25.py
+docker run --rm -v "$PWD":/workspace -w /workspace swm-base:latest \
+  python simulation/render_sim.py configs/e100bt25.py --mode open_loop --renderer matplotlib --steps 100
+docker run --rm -v "$PWD":/workspace -w /workspace swm-base:latest \
+  python simulation/render_sim.py configs/e100bt25.py --mode closed_loop --renderer nuplan --steps 3
 ```
 
-실행은 시스템 `python3`(torch1.12 + natten + nuplan + shapely). 산출물(클립-우선):
+산출물(클립-우선):
 
 - `work/<clip>/sim/<mode>[_nuplan]/frame_%05d.png` — BEV 프레임
 - `work/<clip>/sim/<mode>[_nuplan].mp4` — ffmpeg(libx264) 합성

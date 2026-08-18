@@ -5,7 +5,7 @@
 
 **핵심 원칙**: devkit은 모델을 모른다(모델별 분기 금지). 각 모델의 dataloader가
 `REQUIRES`(아티팩트 이름 목록)를 선언하고 `contract.check()`로 fail-fast 검증한다.
-`torch` import 금지 — `.venv-apollo`(파싱)와 시스템 `python3`(추론) 양쪽에서 import된다.
+`torch` import 금지 — 파싱 경로는 torch 없이 import 가능해야 한다.
 
 ## 구성
 
@@ -46,5 +46,11 @@ contract.check(
 )  # 누락 시 ContractError: "route 없음 -> parse_clip.py ... 실행 필요"
 ```
 
-파싱 드라이버: `.venv-apollo/bin/python parse_clip.py configs/e100bt25.py`,
-`parse_map.py --map <base_map.bin> --name AYG`.
+파싱 드라이버 — 실행은 항상 `docker run`:
+
+```bash
+docker run --rm -v "$PWD":/workspace -w /workspace swm-base:latest \
+  python parse_clip.py configs/e100bt25.py
+docker run --rm -v "$PWD":/workspace -w /workspace swm-base:latest \
+  python parse_map.py --map <base_map.bin> --name AYG
+```

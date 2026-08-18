@@ -13,7 +13,7 @@
   (그건 오케스트레이터 몫).
 - 스키마 체크는 "필수 파일 존재 + 필수 키 존재" 수준.  물리 검증은
   tools/parser_validation 소관 — 여기서 중복 구현하지 않는다.
-- torch import 금지 (.venv-apollo / python3 양쪽에서 동작해야 함).
+- torch import 금지 (torch 없는 경량 파싱 환경에서도 동작해야 함).
 """
 
 from __future__ import annotations
@@ -54,12 +54,12 @@ class ArtifactSpec:
 
 
 _PARSE_HINT = (
-    "run: .venv-apollo/bin/python parse_clip.py configs/<root>.py "
-    "(root config with clip_id={clip_id})"
+    "run: docker run --rm -v \"$PWD\":/workspace -w /workspace swm-base:latest "
+    "python parse_clip.py configs/<root>.py (root config with clip_id={clip_id})"
 )
 _MAP_HINT = (
-    "run: .venv-apollo/bin/python parse_map.py --map <base_map.bin> "
-    "--name {map_name}"
+    "run: docker run --rm -v \"$PWD\":/workspace -w /workspace swm-base:latest "
+    "python parse_map.py --map <base_map.bin> --name {map_name}"
 )
 
 ARTIFACTS: Dict[str, ArtifactSpec] = {

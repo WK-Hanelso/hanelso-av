@@ -23,7 +23,7 @@ MAPS_ROOT = WORK_ROOT / "maps"
 
 # 기본: run_sim.py 를 실행한 인터프리터 하나로 전 스테이지를 돈다.
 # docker swm-base 처럼 파싱·추론·렌더 의존성이 한 환경에 모여 있는 경우가 기본 경로 —
-# host 에 별도 venv(.venv-apollo)가 없어도 컨테이너 단일 환경에서 그대로 동작한다.
+# host 에 별도 파이썬 env 가 없어도 컨테이너 단일 환경에서 그대로 동작한다.
 # 스테이지별로 다른 인터프리터가 필요하면 env 로 오버라이드:
 #   RUN_SIM_PY_INSPECT_RECORD / RUN_SIM_PY_PARSE_CLIP / RUN_SIM_PY_RENDER_SIM
 INTERPRETERS = {
@@ -324,7 +324,7 @@ def main() -> int:
             "Vehicle prefix could not be matched to a calibration config.\n"
             f"record: {record_path}\n"
             f"known prefix rules: {list(CALIBRATION_PREFIX_RULES)}\n"
-            "Action: add calibration/configs/<차량>.py in PIPELINE.md §8 format "
+            "Action: add calibration/configs/<차량>.py (calibration/configs/e100.py 형식) "
             "and extend the prefix rule table in run_sim.py."
         )
     calibration_config_path = REPO_ROOT / "calibration" / "configs" / f"{calibration_name}.py"
@@ -332,7 +332,7 @@ def main() -> int:
         return fail(
             "Vehicle prefix matched, but calibration config is missing.\n"
             f"expected: {calibration_config_path}\n"
-            "Action: add calibration/configs/<차량>.py in PIPELINE.md §8 format."
+            "Action: add calibration/configs/<차량>.py (calibration/configs/e100.py 형식)."
         )
 
     map_match = inspection["map_match"]
@@ -344,7 +344,8 @@ def main() -> int:
             f"record: {record_path}\n"
             f"available maps: {known_maps}\n"
             "Action: obtain the source HD map for this area and run "
-            "`.venv-apollo/bin/python parse_map.py --map <base_map.bin> --name <map_name>`."
+            "`docker run --rm -v \"$PWD\":/workspace -w /workspace swm-base:latest "
+            "python parse_map.py --map <base_map.bin> --name <map_name>`."
         )
     map_path = Path(map_match["matched_map_path"]).resolve()
     if not map_path.exists():

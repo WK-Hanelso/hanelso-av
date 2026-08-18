@@ -75,6 +75,7 @@ CUDA/nvidia 패키지 = 없음
 ```
 → **CUDA 의존 0 → x86-64 리눅스면 GPU 종류·유무와 무관하게 동작.** A6000/5880/3080/1080/2060 전부 OK.
 ※ CPU 유지 정책상, 만약 향후 다른 이유로 GPU가 필요해지면 GPU 이미지가 아니라 **onnx 경로로 우회**해 CPU를 유지한다.
+> **정정(2026-07-31)**: 이후 GPU **실추론** 경로는 모델 소유 이미지 `pluto-inf`(build-arg로 GPU 플랫폼별 빌드, `docker/pluto-inf/`)로 분리됐다. 공용 파이프라인(파싱·sim·render)은 여전히 이 CPU 이미지(swm-base)다.
 
 ---
 
@@ -136,10 +137,10 @@ python:3.9-slim-bullseye
 ## 10. 상태 — 최종 docker 완결 (2026-07-29)
 
 §10의 "미완" 코드가 모두 repo에 채워졌고, **rebuild 없이** 같은 환경 위에서 컨테이너 실행이 검증됐다:
-- **cls 시뮬레이션** ✅ `simulation/render_sim.py --mode closed_loop` (원본 ForwardSimulator LQR 전파 + progress-정렬 agent 재fetch)
+- **cls 시뮬레이션** ✅ `simulation/render_sim.py --mode closed_loop` (원본 ForwardSimulator LQR 전파 + 로그 시간축 agent 재생 — 초기의 progress-정렬은 #11에서 폐지)
 - **render → mp4** ✅ `--renderer {matplotlib,nuplan}` (nuplan = 원본 PLUTO NuplanScenarioRender) + 컨테이너 내 ffmpeg 인코딩
-- **postprocessing** ✅ `run_inference.py --postprocess` / render_sim 내부 (원본 TrajectoryEvaluator+EmergencyBrake). onnx backend는 환경만 준비(pth 사용 중).
+- **postprocessing** ✅ `run_inference.py`(postprocess는 planning 모듈 config가 결정) / render_sim 내부 (원본 TrajectoryEvaluator+EmergencyBrake). onnx backend는 환경만 준비(pth 사용 중).
 
-**검증**: 컨테이너에서 run_inference(--postprocess) + render_sim(closed_loop nuplan)이 에러 없이 완주하고 postprocess 결과가 호스트와 일치, mp4 생성. 또한 **native_nat(순수 torch NAT) forward 출력이 원본 natten과 max_abs_diff ~1e-6로 수치 동등**함을 대조 검증 → CPU/natten-free 설계의 정합성 확인.
+**검증**: 컨테이너에서 run_inference(postprocess 포함) + render_sim(closed_loop nuplan)이 에러 없이 완주하고 postprocess 결과가 호스트와 일치, mp4 생성. 또한 **native_nat(순수 torch NAT) forward 출력이 원본 natten과 max_abs_diff ~1e-6로 수치 동등**함을 대조 검증 → CPU/natten-free 설계의 정합성 확인.
 
 기존 requirements(freeze 235개)가 scipy·shapely·opencv·matplotlib·ffmpeg 등을 이미 포함해 **새 pip 의존 추가 없이** 동작했다.

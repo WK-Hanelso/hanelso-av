@@ -40,12 +40,15 @@
 ## 실행
 
 ```bash
-.venv-apollo/bin/python tools/parser_validation/validate.py \
+docker run --rm -v "$PWD":/workspace -w /workspace swm-base:latest \
+  -v /mnt/hdd_storage:/mnt/hdd_storage \
+  python tools/parser_validation/validate.py \
   --record data/bag/E100BT-25/20260716151711.record.00006
 ```
 
 ```bash
-.venv-apollo/bin/python tools/parser_validation/validate.py --map-only AYG
+docker run --rm -v "$PWD":/workspace -w /workspace swm-base:latest \
+  python tools/parser_validation/validate.py --map-only AYG
 ```
 
 record 검증 실행 시 표준출력에는 `matched_map`, `reroute`, `validation`, `scene_bev_png`, `map_bev_png`가 함께 찍힌다.

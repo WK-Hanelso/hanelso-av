@@ -43,7 +43,7 @@
 빌드 컨텍스트는 `docker/base/`만 사용한다.
 
 ```bash
-docker build -t swm-base:latest -f docker/base/Dockerfile docker/
+docker build -t swm-base:latest -f docker/base/Dockerfile docker/base/
 ```
 
 예상 사항:
@@ -139,7 +139,7 @@ GPU 실추론은 모델 소유 이미지 `pluto-inf`(`docker/pluto-inf/`)에서
 `simulation/render_sim.py`가 시뮬레이션 루프와 렌더링을 함께 수행한다.
 
 - `--mode open_loop` : ego=로그(GT), 매 프레임 모델 예측 오버레이
-- `--mode closed_loop` : ego=모델이 운전(원본 ForwardSimulator로 전파), agent progress-정렬 재fetch
+- `--mode closed_loop` : ego=모델이 운전(원본 ForwardSimulator로 전파), agent는 로그 시간축 재생(log_idx — #11)
 - `--renderer matplotlib` : 자체 BEV / `--renderer nuplan` : 원본 PLUTO 공식 렌더(NuplanScenarioRender)
 
 ```bash
@@ -192,7 +192,7 @@ PY
 
 ## 상태 (컨테이너에서 검증됨)
 
-- **전 파이프라인 컨테이너 실행 확인**: `parse_map → parse_clip → run_inference(--postprocess) → simulation/render_sim(open/closed-loop, matplotlib/nuplan)` 이 이미지 안에서 동작하며, run_inference/postprocess 출력이 호스트와 일치하고 closed-loop `nuplan` mp4까지 생성된다.
+- **전 파이프라인 컨테이너 실행 확인**: `parse_map → parse_clip → run_inference → simulation/render_sim(open/closed-loop, matplotlib/nuplan)` 이 이미지 안에서 동작하며, run_inference/postprocess 출력이 호스트와 일치하고 closed-loop `nuplan` mp4까지 생성된다.
 - **native_nat ≡ natten 검증**: vendored `native_nat`(planning/models/pluto/src, 순수 torch NAT, natten 미설치)와 원본 `natten` forward 출력이 `max_abs_diff ~1e-6`(allclose) — CPU/native_nat 경로가 수치 동등하므로 GPU/natten 없이도 결과가 신뢰 가능.
 - ONNX 추론 백엔드는 환경(onnxruntime)만 준비돼 있다. 현재 파이프라인은 pth backend를 쓰며, onnx CLI 연결은 필요 시 별도.
 - 이 이미지는 **환경 레이어**다. 소스(git clone)와 데이터(마운트) 없이 단독으로는 파이프라인을 수행하지 않는다.

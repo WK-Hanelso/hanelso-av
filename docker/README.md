@@ -42,10 +42,10 @@ docker run --rm --gpus all -v "$PWD":/workspace -w /workspace pluto-inf:latest \
   python planning/run_inference.py configs/e100bt25.py --device cuda
 ```
 
-## bag → mp4 시뮬 실행 (docker 단독 — host `.venv-apollo` 불필요)
+## bag → mp4 시뮬 실행 (docker 단독 — host 파이썬 env 불필요)
 
 `run_sim.py` 하나로 bag→parse→추론→render→mp4 전 구간을 컨테이너에서 돈다. host 에 별도
-파이썬 env(`.venv-apollo`)가 없어도 된다 — 파싱·추론·렌더 의존성이 이미지 단일 환경에 모두
+host 파이썬 env가 없어도 된다 — 파싱·추론·렌더 의존성이 이미지 단일 환경에 모두
 있고, 전 스테이지가 컨테이너의 인터프리터 하나로 실행된다. CPU·GPU 둘 다 검증됨.
 
 > **데이터 마운트**: bag 등 `data/` 는 `/mnt/hdd_storage` 심볼릭이라, 그 디스크를 같이
@@ -68,5 +68,5 @@ docker run --rm --gpus all \
   python run_sim.py <record> --mode closed_loop --device cuda
 ```
 
-산출물: `work/<clip>/sim/<mode>.mp4` (+ metrics json). 개별 스테이지로 나눠 돌리려면
+산출물: `work/<clip>/sim/<mode>[_nuplan].mp4` (+ metrics json — 기본 렌더러 `nuplan`은 `_nuplan` suffix). 개별 스테이지로 나눠 돌리려면
 `python parse_clip.py <config>` → `python simulation/render_sim.py <config> [--device cuda]`.

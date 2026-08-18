@@ -9,7 +9,7 @@ dopamine-av의 모든 도메인이 공유하는 **순수 공유물**만 남긴�
 
 | 경로 | 역할 |
 |---|---|
-| `FORMAT_SPEC.md` | 우리 통합 데이터 포맷 명세 (nuScenes 코어 + VLM 언어 레이어). **운영 문서** — 포맷 SoT. |
+| `FORMAT_SPEC.md` | 우리 통합 데이터 포맷 명세 (nuScenes 코어 + VLM 언어 레이어). **운영 문서** — 포맷 SoT. (로컬 전용 — git 미포함) |
 | `config.py` | **계층 config 조합 로더** (C-SWM-022). ROOT config(`configs/*.py`)의 모듈 이름을 `<domain>/configs/<이름>.py`로 해석·병합해 최종 config dict 하나를 반환. `_base_` 상속(dict 재귀 병합) 지원. 모든 드라이버는 root config 경로 하나만 받는다. |
 
 ## 사용 예
@@ -22,6 +22,6 @@ cfg["planning"]["policy"]   # -> "pluto_torch"
 
 ## 관련 문서 (운영)
 
-- 포맷 정의: [FORMAT_SPEC.md](FORMAT_SPEC.md)
+- 포맷 정의: `common/FORMAT_SPEC.md` (운영 문서, 로컬 전용 — git 미포함)
 - 파싱·데이터 계약: [../data_devkit/README.md](../data_devkit/README.md)
-- 실행 로그: [../agent/C-SWM-001_EXEC.md](../agent/C-SWM-001_EXEC.md)
+- 실행 로그: `agent/C-SWM-001_EXEC.md` (운영 문서, 로컬 전용 — git 미포함)
