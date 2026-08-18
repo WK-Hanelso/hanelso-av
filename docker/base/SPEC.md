@@ -33,7 +33,7 @@
 |---|---|
 | backend (pth) | `torch==1.12.0+cpu` (별도 인덱스, requirements 밖) |
 | backend (onnx) | `onnxruntime` (CPU, 구 freeze 1.13.1) |
-| config 로딩 (지금도 필수) | `hydra-core`(1.1.0rc1), `omegaconf`(2.1.0rc1) — run_inference `--config-path code/hydra/config.yaml` |
+| config 로딩 (지금도 필수) | `hydra-core`(1.1.0rc1), `omegaconf`(2.1.0rc1) — 모델 번들 native config(`data/model/pluto_v3/config.yaml`) 로딩 |
 | cls 시뮬 | `scipy`, `numba` |
 | render | `matplotlib`, `shapely`, `opencv-python`, `pillow`, `pyquaternion`, `pandas` |
 | 맵/지오 (nuplan) | `geopandas`, `fiona`, `rasterio` |
@@ -84,15 +84,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # libgdal-dev gdal-bin   # geopandas/rasterio가 시스템 GDAL 요구시 주석해제
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --upgrade pip
+# nuplan이 요구하는 hydra-core==1.1.0rc1 / omegaconf==2.1.0rc1 의 낡은 메타데이터를
+# pip 24.1+ 가 거부하므로 pip<24.1 고정
+RUN pip install "pip<24.1"
 
-# 1) torch CPU 고정
-RUN pip install torch==1.12.0+cpu \
+# 1) torch/torchvision CPU 쌍 고정 (timm import 체인이 torchvision 요구 — CUDA판 끌림 방지)
+RUN pip install torch==1.12.0+cpu torchvision==0.13.0+cpu \
         -f https://download.pytorch.org/whl/torch_stable.html
 
-# 2) 파이썬 의존성 슈퍼셋
+# 2) 파이썬 의존성 슈퍼셋 — 검증 freeze 를 --no-deps 로 그대로 재현 (resolver 미개입)
 COPY requirements.txt /tmp/requirements.txt
-RUN pip install -r /tmp/requirements.txt
+RUN pip install --no-deps -r /tmp/requirements.txt
 
 # 3) nuplan-devkit (버전 고정, deps는 위에서 설치 → --no-deps)
 RUN pip install --no-deps \

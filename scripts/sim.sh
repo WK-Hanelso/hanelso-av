@@ -40,7 +40,7 @@ sim.sh — bag → 시뮬레이션 mp4 원샷 런처 (docker 자동 처리)
 
 동작:
   이미지가 없으면 자동 빌드 → docker run(코드·데이터 마운트) → run_sim.py 실행.
-  산출물: work/<clip>/sim/<mode>.mp4
+  산출물: work/<clip>/sim/<mode>[_nuplan].mp4 (기본 렌더러 nuplan 은 _nuplan suffix)
 
 예시:
   scripts/sim.sh data/bag/E100BT-25/20260716151711.record.00006

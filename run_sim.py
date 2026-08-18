@@ -324,7 +324,7 @@ def main() -> int:
             "Vehicle prefix could not be matched to a calibration config.\n"
             f"record: {record_path}\n"
             f"known prefix rules: {list(CALIBRATION_PREFIX_RULES)}\n"
-            "Action: add calibration/configs/<차량>.py in PIPELINE.md §8 format "
+            "Action: add calibration/configs/<차량>.py (calibration/configs/e100.py 형식) "
             "and extend the prefix rule table in run_sim.py."
         )
     calibration_config_path = REPO_ROOT / "calibration" / "configs" / f"{calibration_name}.py"
@@ -332,7 +332,7 @@ def main() -> int:
         return fail(
             "Vehicle prefix matched, but calibration config is missing.\n"
             f"expected: {calibration_config_path}\n"
-            "Action: add calibration/configs/<차량>.py in PIPELINE.md §8 format."
+            "Action: add calibration/configs/<차량>.py (calibration/configs/e100.py 형식)."
         )
 
     map_match = inspection["map_match"]
@@ -344,7 +344,7 @@ def main() -> int:
             f"record: {record_path}\n"
             f"available maps: {known_maps}\n"
             "Action: obtain the source HD map for this area and run "
-            "`.venv-apollo/bin/python parse_map.py --map <base_map.bin> --name <map_name>`."
+            "`python3 parse_map.py --map <base_map.bin> --name <map_name>` (docker swm-base)."
         )
     map_path = Path(map_match["matched_map_path"]).resolve()
     if not map_path.exists():

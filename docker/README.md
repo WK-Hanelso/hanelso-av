@@ -68,5 +68,5 @@ docker run --rm --gpus all \
   python run_sim.py <record> --mode closed_loop --device cuda
 ```
 
-산출물: `work/<clip>/sim/<mode>.mp4` (+ metrics json). 개별 스테이지로 나눠 돌리려면
+산출물: `work/<clip>/sim/<mode>[_nuplan].mp4` (+ metrics json — 기본 렌더러 `nuplan`은 `_nuplan` suffix). 개별 스테이지로 나눠 돌리려면
 `python parse_clip.py <config>` → `python simulation/render_sim.py <config> [--device cuda]`.

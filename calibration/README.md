@@ -1,7 +1,7 @@
 # calibration
 
 차량 제원(치수·STEER_GAIN·IMU offset) 도메인. `configs/{e100,u100}.py`는
-PIPELINE.md §8 매트릭스의 사실 기록이고, 소비 시점 배선은
+차량·맵 매트릭스(운영 문서 PIPELINE.md §8, 로컬 전용 — git 미포함)의 사실 기록이고, 소비 시점 배선은
 `calibration/vehicle.py`가 담당한다.
 
 현재 배선 상태:
