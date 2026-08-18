@@ -1,4 +1,4 @@
-# dopamine-av — 계약으로 조립하는 자율주행 SW 스택
+# hanelso-av — 계약으로 조립하는 자율주행 SW 스택
 
 자율주행 SW 스택 — 센서 원본 → 데이터 → 인지 → 예측 → 판단(planning) → 시뮬레이션/평가 — 을 하나의 모노레포에서 개발한다. **이 프로젝트의 본체는 특정 모델이나 시뮬레이터가 아니라, 전 스택을 모듈로 나누고 경계마다 계약(ABC + registry + 데이터 계약)을 두어 갈아끼울 수 있게 조립하는 구조 그 자체다.** 모델·파서·렌더러는 그 구조에 꽂히는 교체 가능한 구성요소다.
 
@@ -69,7 +69,7 @@ config = dict(
 ## 리포지토리 구조
 
 ```
-dopamine-av/
+hanelso-av/
 ├── run_sim.py          # bag → sim mp4 원샷 오케스트레이터 (진입점)
 ├── parse_clip.py       # record → 통합 clip 아티팩트 파싱
 ├── parse_map.py        # base_map.bin → map_graph
@@ -139,7 +139,7 @@ docker run --rm -v "$PWD":/workspace -w /workspace av-base:latest \
 
 ## 환경
 
-- **파이썬 base 패키지**: `pyproject.toml` (`dopamine-av`, requires-python ≥ 3.9, numpy / protobuf 3.20.3 / cyber_record).
+- **파이썬 base 패키지**: `pyproject.toml` (`hanelso-av`, requires-python ≥ 3.9, numpy / protobuf 3.20.3 / cyber_record).
 - **단일 docker 환경이 기본 경로.** 이미지(av-base/pluto-inf) 하나에 파싱(cyber_record, Apollo `pb2`)·추론(torch, nuplan-devkit)·렌더 의존성이 모두 들어 있어 전 스테이지가 한 인터프리터로 돈다. 스테이지별로 다른 인터프리터가 필요한 특수한 경우만 `RUN_SIM_PY_*` env로 오버라이드한다(`run_sim.py` 상단 참고).
 - **Docker**: `docker/base`(= `av-base`, CPU 시뮬 공용) / `docker/pluto-inf`(모델 GPU 추론). `docker/README.md` 참고.
 

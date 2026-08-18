@@ -1,6 +1,6 @@
 # common/ — 도메인 관통 공유 모듈
 
-dopamine-av의 모든 도메인이 공유하는 **순수 공유물**만 남긴다. 파싱 프레임워크(구
+hanelso-av의 모든 도메인이 공유하는 **순수 공유물**만 남긴다. 파싱 프레임워크(구
 `common/io`)는 [`data_devkit/`](../data_devkit/README.md)로 승격했다.
 
 > **모듈 명세 규약**: 이 README는 `common/`의 **내용 명세**다 (코드 모듈 디렉토리당 README 1개). 설계 근거·운영 문서(FORMAT_SPEC·DESIGN·EXEC)는 별개 문서로 링크만 한다.
