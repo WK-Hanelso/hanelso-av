@@ -82,6 +82,7 @@ hanelso-av/
 ├── localization/       # 도메인 슬롯 (빈)
 ├── perception/         # 도메인 슬롯 (빈)
 ├── tools/              # 시각화·검수 (parser_validation 등)
+├── tests/              # 골든 패리티 테스트 (feature 규격 ↔ 번들 native config)
 ├── configs/            # ROOT config = 조립 명세서 — configs/README.md
 ├── third_party/        # vendored 외부 소스 자리 (현재 비어 있음)
 └── docker/             # 실행 환경 이미지 (av-base, pluto-inf) — docker/README.md
