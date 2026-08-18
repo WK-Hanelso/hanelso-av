@@ -39,6 +39,11 @@ class ModelDrivenDriver(EgoDriver):
     mode = "closed_loop"
 
     def run(self, renderer: Any, frames_dir: Path, mode_name: str, out_dir: Path) -> Dict[str, Any]:
+        if self.postprocessor is None:
+            raise ValueError(
+                "ModelDrivenDriver(closed_loop) requires a postprocessor "
+                "(best-trajectory selection is the model adapter's responsibility)."
+            )
         from planning.nuplan_common.post_processing.forward_simulation.forward_simulator import ForwardSimulator
 
         sim_cfg = self.sim_cfg

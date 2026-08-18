@@ -1,3 +1,4 @@
+import logging
 from typing import Dict, List, Tuple
 
 import numpy as np
@@ -11,6 +12,8 @@ from nuplan.planning.simulation.occupancy_map.strtree_occupancy_map import (
 )
 
 from .bfs_roadblock import BreadthFirstSearchRoadBlock
+
+logger = logging.getLogger(__name__)
 
 
 def normalize_angle(angle: float) -> float:
@@ -233,8 +236,15 @@ def remove_route_loops(
     loop_idx = None
 
     for idx, roadblock in enumerate(route_roadblocks):
-        # loops only occur at intersection, thus searching for roadblock-connectors.
-        if str(roadblock.__class__.__name__) == "NuPlanRoadBlockConnector":
+        # loops only occur at intersections, thus searching for roadblock-connectors.
+        # 판별은 map 어댑터 무관 duck-type 계약(is_connector)로 한다 — 원본 nuPlan
+        # concrete 클래스명 비교는 ApolloRoadblock 등 어댑터에서 항상 False가 되어
+        # 이 가드 전체가 무력화됐었다 (issue #28). is_connector 속성이 없는 객체만
+        # 원본 nuPlan 클래스명 판별로 폴백한다.
+        is_connector = getattr(roadblock, "is_connector", None)
+        if is_connector is None:
+            is_connector = str(roadblock.__class__.__name__) == "NuPlanRoadBlockConnector"
+        if is_connector:
             if not roadblock_occupancy_map:
                 roadblock_occupancy_map = STRTreeOccupancyMapFactory.get_from_geometry(
                     [roadblock.polygon], [roadblock.id]
@@ -255,6 +265,13 @@ def remove_route_loops(
             roadblock_occupancy_map.insert(roadblock.id, roadblock.polygon)
 
     if loop_idx:
+        logger.warning(
+            "remove_route_loops: route loop detected at index %d (roadblock %s of %d) "
+            "- truncating route before the loop.",
+            loop_idx,
+            route_roadblock_ids[loop_idx],
+            len(route_roadblock_ids),
+        )
         route_roadblocks = route_roadblocks[:loop_idx]
         route_roadblock_ids = route_roadblock_ids[:loop_idx]
 

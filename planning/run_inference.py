@@ -344,7 +344,7 @@ def main() -> int:
 
     post_result = None
     post_cfg = plan_cfg.get("postprocess", {})
-    if post_cfg.get("enabled", True):
+    if post_cfg.get("enabled", True) and post_cfg.get("name"):
         postprocessor = get_postprocessor(post_cfg["name"])(
             vehicle_parameters=build_result.scene_context["ego_state"].car_footprint.vehicle_parameters
         )
