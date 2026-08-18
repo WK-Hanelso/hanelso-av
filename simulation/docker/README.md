@@ -1,6 +1,6 @@
 > ⚠️ **LEGACY — 현행 아님.** 이 디렉토리는 구세대 `pluto-apollo-sim` 이미지 체계(외부 pluto_onnx checkout + build.sh 임시 컨텍스트)의 기록이다.
 > 여기서 참조하는 `docker/build.sh`·`scripts/dump_raw.py`·`scripts/render_closed_loop_post.py` 는 현재 repo에 존재하지 않는다.
-> 현행 이미지는 [docker/README.md](../../docker/README.md) (`swm-base` / `pluto-inf`), 실행은 `scripts/sim.sh` 참고.
+> 현행 이미지는 [docker/README.md](../../docker/README.md) (`av-base` / `pluto-inf`), 실행은 `scripts/sim.sh` 참고.
 > 이 디렉토리의 `requirements.txt`(241개 freeze)는 현행 `docker/base/requirements.txt` 도출의 출처 기록으로만 유효하다 (docker/base/SPEC.md §7).
 
 # pluto-apollo-sim Docker

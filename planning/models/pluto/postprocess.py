@@ -1,4 +1,4 @@
-"""Deployment post-processing for the PLUTO policy (C-SWM-017).
+"""Deployment post-processing for the PLUTO policy.
 
 Reuses the ORIGINAL pluto post-processing stack unchanged:
   - src.post_processing.trajectory_evaluator.TrajectoryEvaluator (8 rule metrics,

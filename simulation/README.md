@@ -1,8 +1,8 @@
-# simulation/ — sim 전용 렌더/주행 모듈 (C-SWM-018 → C-SWM-022 추상화)
+# simulation/ — sim 전용 렌더/주행 모듈 (ABC + registry 추상화)
 
 배포 planner(`planning/`)와 분리된 **시뮬레이션 전용** 계층. planner 출력(모델 forward + `PlutoPostProcessor` best)을 데이터로만 소비한다.
 
-sim은 **오프라인 검증 경로**라 CPU(`swm-base` 이미지)로 돈다 — GPU 실추론 경로는
+sim은 **오프라인 검증 경로**라 CPU(`av-base` 이미지)로 돈다 — GPU 실추론 경로는
 `planning/run_inference.py --device cuda`(모델 소유 env `pluto-inf`)로 분리.
 
 ## 구성 (ABC + registry)
@@ -13,21 +13,21 @@ sim은 **오프라인 검증 경로**라 CPU(`swm-base` 이미지)로 돈다 —
 | `drivers/` | `EgoDriver` ABC + registry — `"log_replay"`(open_loop: ego=로그 GT) / `"model_driven"`(closed_loop: ego=모델 운전, 원본 `ForwardSimulator` 전파). |
 | `configs/` | 모듈 config: `closed_loop_nuplan.py`, `open_loop_matplotlib.py`(`_base_` 상속) — mode/renderer/steps/stride/fps 등. |
 | `sim_utils.py` | 지오메트리·로그 agent fetch·ego dynamics·mp4 합성 공용 헬퍼. |
-| `render_sim.py` | **조립 전용** 드라이버 — concrete 모델 import 0 (`planning.interface.load_model` 동적 로딩, C-SWM-023). root config 하나 + CLI override. |
+| `render_sim.py` | **조립 전용** 드라이버 — concrete 모델 import 0 (`planning.interface.load_model` 동적 로딩). root config 하나 + CLI override. |
 
 **postprocess 계약 (issue #30)**: planning 모듈 config의 `postprocess`는 optional — 키 부재 또는 `enabled=False`면 postprocessor 없이 조립된다(`run_inference`와 동일 해석). 단 **closed_loop은 postprocessor 필수** — best-궤적 선택은 모델 어댑터의 소관이라 드라이버는 모델 좌표 규약을 모른다. 평가 로직이 없는 모델은 output trajectory를 global로 돌려주는 passthrough postprocessor를 등록해 closed_loop에 참여한다. open_loop은 postprocessor가 없으면 예측 오버레이만 생략하고 동작한다.
 
 ## 실행
 
-실행은 항상 `docker run`(공용 이미지 `swm-base` — torch1.12 CPU + nuplan + shapely, natten은 순수 torch `native_nat`로 대체). 원샷은 `scripts/sim.sh`.
+실행은 항상 `docker run`(공용 이미지 `av-base` — torch1.12 CPU + nuplan + shapely, natten은 순수 torch `native_nat`로 대체). 원샷은 `scripts/sim.sh`.
 
 ```bash
 # root config의 simulation 이름(예: closed_loop_nuplan)이 기본값, CLI로 override
-docker run --rm -v "$PWD":/workspace -w /workspace swm-base:latest \
+docker run --rm -v "$PWD":/workspace -w /workspace av-base:latest \
   python simulation/render_sim.py configs/e100bt25.py
-docker run --rm -v "$PWD":/workspace -w /workspace swm-base:latest \
+docker run --rm -v "$PWD":/workspace -w /workspace av-base:latest \
   python simulation/render_sim.py configs/e100bt25.py --mode open_loop --renderer matplotlib --steps 100
-docker run --rm -v "$PWD":/workspace -w /workspace swm-base:latest \
+docker run --rm -v "$PWD":/workspace -w /workspace av-base:latest \
   python simulation/render_sim.py configs/e100bt25.py --mode closed_loop --renderer nuplan --steps 3
 ```
 

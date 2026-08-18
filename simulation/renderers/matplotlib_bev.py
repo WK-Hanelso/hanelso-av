@@ -1,4 +1,4 @@
-"""matplotlib BEV renderer — global-UTM crop that follows the ego (C-SWM-018)."""
+"""matplotlib BEV renderer — global-UTM crop that follows the ego."""
 
 from __future__ import annotations
 

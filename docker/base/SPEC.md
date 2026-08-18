@@ -133,7 +133,7 @@ CMD ["bash"]
 # clone된 워킹트리(= dopamine-av 코드 + planning/models/pluto/src vendored 포함)를 마운트
 RUN="docker run --rm \
   -v $PWD:/workspace \
-  swm-base:latest"
+  av-base:latest"
 
 $RUN python parse_map.py    ...                     # base_map.bin -> MapGraph
 $RUN python parse_clip.py   configs/e100bt25.py     # bag -> 통합포맷
@@ -153,9 +153,9 @@ $RUN python planning/run_inference.py \
    `work/inference/<scene>/infer_report.txt` 가 기존 결과와 수치 정합.
    (기준: `work/inference/{E100BT-25_...00006, E100BT-22_...00014}/`)
 4. **CPU 전용**: `--gpus` 없이 동작.
-5. EXEC 문서(`agent/C-SWM-DOCKER_EXEC.md`)에 빌드 로그·헬스체크·스모크 수치 기록.
+5. 운영 EXEC 문서(로컬 `agent/`)에 빌드 로그·헬스체크·스모크 수치 기록.
 6. 결과물: `docker/base/{Dockerfile, requirements.txt, README.md}`(build.sh 없음) + 구 `simulation/docker` deprecated 배너.
-7. git commit + push (`T-SWM-DOCKER: ...`).
+7. git commit + push.
 
 ---
 
@@ -171,5 +171,5 @@ $RUN python planning/run_inference.py \
 ## 8. codex 위임 노트
 - **workdir**: `/home/hanelso/hanelso/dopamine-av`. 산출물 = `docker/base/{Dockerfile, requirements.txt, README.md}`.
 - **금지**: Dockerfile에 `COPY <소스>` / build.sh 재도입 / 호스트 로컬 경로 의존.
-- **EXEC.md**: workdir 내 `agent/C-SWM-DOCKER_EXEC.md` 작성 후 오케스트레이터가 HANELSO로 복사.
+- **EXEC.md**: workdir 내 `agent/` EXEC 문서 작성 후 오케스트레이터가 별도 보관.
 - `run_in_background=true`.

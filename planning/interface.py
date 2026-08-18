@@ -1,4 +1,4 @@
-"""planning 인터페이스 — ABC + registry + 동적 로딩 (C-SWM-025).
+"""planning 인터페이스 — ABC + registry + 동적 로딩.
 
 계약
 ----

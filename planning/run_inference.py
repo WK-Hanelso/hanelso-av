@@ -1,4 +1,4 @@
-"""planning inference driver (C-SWM-025): root config 하나로 조립·실행.
+"""planning inference driver: root config 하나로 조립·실행.
 
     python planning/run_inference.py configs/e100bt25.py [--device cuda]
 

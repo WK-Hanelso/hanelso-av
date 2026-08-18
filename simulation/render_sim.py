@@ -1,4 +1,4 @@
-"""simulation driver (조립 전용, C-SWM-022): root config 하나로 실행.
+"""simulation driver (조립 전용): root config 하나로 실행.
 
     python simulation/render_sim.py configs/e100bt25.py \
         [--mode closed_loop] [--renderer nuplan] [--steps 3] ...
@@ -9,7 +9,7 @@ policy(planning/policy registry) + postprocessor + renderer(simulation/renderers
 registry) + ego-driver(simulation/drivers registry; open_loop=log_replay,
 closed_loop=model_driven).
 
-sim은 오프라인 검증 경로라 CPU(swm-base)로 돈다 — GPU 실추론 경로는
+sim은 오프라인 검증 경로라 CPU(av-base)로 돈다 — GPU 실추론 경로는
 planning/run_inference.py --device cuda (모델 소유 env: pluto-inf).
 
 Outputs: work/<clip>/sim/<mode>[_nuplan]/frame_%05d.png

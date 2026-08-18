@@ -21,7 +21,7 @@
 | 차량 제원 | `calibration/` — 실차 물리 계약 | `e100`, `u100` | 활성 |
 | 시뮬 주행 | `simulation/drivers` — `EgoDriver` ABC + registry | `"log_replay"`(open), `"model_driven"`(closed) | 활성 |
 | 렌더 | `simulation/renderers` — `Renderer` ABC + registry | `"matplotlib"`, `"nuplan"` | 활성 |
-| 실행 환경 | 모듈 config `env` 필드 = docker 이미지 (이미지는 모델/기능이 소유) | `swm-base`(CPU 공용), `pluto-inf`(GPU 추론) | 활성 |
+| 실행 환경 | 모듈 config `env` 필드 = docker 이미지 (이미지는 모델/기능이 소유) | `av-base`(CPU 공용), `pluto-inf`(GPU 추론) | 활성 |
 | localization / perception 도메인 | `interface.py` 자리 (planning 패턴 예비) | — | 빈 슬롯 |
 
 **조립은 ROOT config가 한다.** `configs/*.py`는 "무엇을 쓸지" 이름만 적는 조립 명세서이고, `common/config.py::load_config`가 이름을 `<domain>/configs/<이름>.py`로 해석·병합한다:
@@ -84,7 +84,7 @@ dopamine-av/
 ├── tools/              # 시각화·검수 (parser_validation 등)
 ├── configs/            # ROOT config = 조립 명세서 — configs/README.md
 ├── third_party/        # vendored 외부 소스 자리 (현재 비어 있음)
-└── docker/             # 실행 환경 이미지 (swm-base, pluto-inf) — docker/README.md
+└── docker/             # 실행 환경 이미지 (av-base, pluto-inf) — docker/README.md
 ```
 
 > `data/`(읽기전용 입력 — 물리 디스크 심볼릭)와 `work/`(파생물·캐시), `.venv-*`, 운영용 로컬 문서는 `.gitignore`로 git에서 제외된다. 리포에는 **코드 + 각 모듈 README**만 담긴다.
@@ -103,7 +103,7 @@ record(.record) ─┬─▶ ① inspect_record   토픽/맵/차량 판정 (tool
                  │         scene_log · route · map_graph)
                  └─▶ ③ render_sim.py     closed_loop_nuplan 시뮬 → mp4 + metrics
 ```
-- docker 이미지(swm-base/pluto-inf) 하나에 파싱·추론·렌더 의존성이 모두 있어, 세 스테이지가 컨테이너 **단일 환경**에서 돈다 (host 파이썬 env 불필요 — 실행은 항상 `docker run`).
+- docker 이미지(av-base/pluto-inf) 하나에 파싱·추론·렌더 의존성이 모두 있어, 세 스테이지가 컨테이너 **단일 환경**에서 돈다 (host 파이썬 env 불필요 — 실행은 항상 `docker run`).
 
 ### 빠른 시작 — `scripts/sim.sh` (docker 한 줄, 권장)
 
@@ -125,12 +125,12 @@ scripts/sim.sh data/bag/E100BT-25/20260716151711.record.00006 --gpu --steps 100
 > 런처 없이 직접(`docker run …` 또는 host env)은 [docker/README.md](docker/README.md) 참고.
 
 ### 모델 직접 추론 (planning 도메인)
-실행은 항상 `docker run` — 실추론(GPU)은 모델 소유 이미지 `pluto-inf`, 오프라인 sim(CPU)은 공용 이미지 `swm-base`.
+실행은 항상 `docker run` — 실추론(GPU)은 모델 소유 이미지 `pluto-inf`, 오프라인 sim(CPU)은 공용 이미지 `av-base`.
 
 ```bash
 docker run --rm --gpus all -v "$PWD":/workspace -w /workspace pluto-inf:latest \
   python planning/run_inference.py configs/<scenario>.py --device cuda
-docker run --rm -v "$PWD":/workspace -w /workspace swm-base:latest \
+docker run --rm -v "$PWD":/workspace -w /workspace av-base:latest \
   python simulation/render_sim.py configs/<scenario>.py
 ```
 자세한 배치·registry·env 규약은 [planning/README.md](planning/README.md), 이미지 빌드는 [docker/README.md](docker/README.md) 참고.
@@ -140,8 +140,8 @@ docker run --rm -v "$PWD":/workspace -w /workspace swm-base:latest \
 ## 환경
 
 - **파이썬 base 패키지**: `pyproject.toml` (`dopamine-av`, requires-python ≥ 3.9, numpy / protobuf 3.20.3 / cyber_record).
-- **단일 docker 환경이 기본 경로.** 이미지(swm-base/pluto-inf) 하나에 파싱(cyber_record, Apollo `pb2`)·추론(torch, nuplan-devkit)·렌더 의존성이 모두 들어 있어 전 스테이지가 한 인터프리터로 돈다. 스테이지별로 다른 인터프리터가 필요한 특수한 경우만 `RUN_SIM_PY_*` env로 오버라이드한다(`run_sim.py` 상단 참고).
-- **Docker**: `docker/base`(= `swm-base`, CPU 시뮬 공용) / `docker/pluto-inf`(모델 GPU 추론). `docker/README.md` 참고.
+- **단일 docker 환경이 기본 경로.** 이미지(av-base/pluto-inf) 하나에 파싱(cyber_record, Apollo `pb2`)·추론(torch, nuplan-devkit)·렌더 의존성이 모두 들어 있어 전 스테이지가 한 인터프리터로 돈다. 스테이지별로 다른 인터프리터가 필요한 특수한 경우만 `RUN_SIM_PY_*` env로 오버라이드한다(`run_sim.py` 상단 참고).
+- **Docker**: `docker/base`(= `av-base`, CPU 시뮬 공용) / `docker/pluto-inf`(모델 GPU 추론). `docker/README.md` 참고.
 
 ---
 

@@ -11,7 +11,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # --- 기본값 (CPU) ---
 DEVICE=cpu
-IMAGE=swm-base:latest
+IMAGE=av-base:latest
 DOCKERFILE=docker/base/Dockerfile
 BUILD_CONTEXT=docker/base
 MODE=closed_loop
@@ -32,7 +32,7 @@ sim.sh — bag → 시뮬레이션 mp4 원샷 런처 (docker 자동 처리)
                  예: data/bag/E100BT-25/20260716151711.record.00006
 
 옵션:
-  --gpu          GPU로 실행 (pluto-inf 이미지 + CUDA). 기본은 CPU(swm-base).
+  --gpu          GPU로 실행 (pluto-inf 이미지 + CUDA). 기본은 CPU(av-base).
   --steps N      시뮬 스텝 수
   --mode M       closed_loop | open_loop  (기본: closed_loop)
   --verbose      빌드/실행 상세 로그 출력

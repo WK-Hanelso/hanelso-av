@@ -43,7 +43,7 @@
 빌드 컨텍스트는 `docker/base/`만 사용한다.
 
 ```bash
-docker build -t swm-base:latest -f docker/base/Dockerfile docker/base/
+docker build -t av-base:latest -f docker/base/Dockerfile docker/base/
 ```
 
 예상 사항:
@@ -67,7 +67,7 @@ docker build -t swm-base:latest -f docker/base/Dockerfile docker/base/
 ```bash
 docker run --rm -it \
   -v "$PWD:/workspace" \
-  swm-base:latest \
+  av-base:latest \
   bash
 ```
 
@@ -78,7 +78,7 @@ docker run --rm -it \
   -v "$PWD:/workspace" \
   -v "$PWD/data:/workspace/data" \
   -v "$PWD/work:/workspace/work" \
-  swm-base:latest \
+  av-base:latest \
   bash
 ```
 
@@ -91,7 +91,7 @@ MAP_BIN=/absolute/path/to/base_map.bin
 
 docker run --rm \
   -v "$PWD:/workspace" \
-  swm-base:latest \
+  av-base:latest \
   python parse_map.py \
     --map "$MAP_BIN" \
     --name AYG \
@@ -108,7 +108,7 @@ docker run --rm \
 ```bash
 docker run --rm \
   -v "$PWD:/workspace" \
-  swm-base:latest \
+  av-base:latest \
   python parse_clip.py configs/e100bt25.py
 ```
 
@@ -116,18 +116,18 @@ docker run --rm \
 
 ### 3. 추론 실행 (CPU)
 
-드라이버는 root config 하나만 받는다 (C-SWM-022 계층 config).
+드라이버는 root config 하나만 받는다 (계층 config).
 
 ```bash
 docker run --rm \
   -v "$PWD:/workspace" \
-  swm-base:latest \
+  av-base:latest \
   python planning/run_inference.py configs/e100bt25.py
 ```
 
 출력은 `work/E100BT-25_20260716151711_00006/inference/` 아래에 생성된다.
 GPU 실추론은 모델 소유 이미지 `pluto-inf`(`docker/pluto-inf/`)에서
-`--device cuda`로 돌린다 — swm-base는 CPU 공용 파이프라인 전용.
+`--device cuda`로 돌린다 — av-base는 CPU 공용 파이프라인 전용.
 
 비교 기준으로 저장된 리포트는 다음 경로에 있다.
 
@@ -145,7 +145,7 @@ GPU 실추론은 모델 소유 이미지 `pluto-inf`(`docker/pluto-inf/`)에서
 ```bash
 docker run --rm \
   -v "$PWD:/workspace" \
-  swm-base:latest \
+  av-base:latest \
   python simulation/render_sim.py configs/e100bt25.py \
     --mode closed_loop --renderer nuplan --start-index 160 --steps 120
 ```

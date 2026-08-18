@@ -1,4 +1,4 @@
-"""parse driver: 원본 record -> work/<clip_id>/parsed (공용 파이프라인 — docker swm-base에서 실행).
+"""parse driver: 원본 record -> work/<clip_id>/parsed (공용 파이프라인 — docker av-base에서 실행).
 
     python parse_clip.py configs/e100bt25.py
 
