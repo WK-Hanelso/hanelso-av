@@ -44,7 +44,7 @@ class LogReplayDriver(EgoDriver):
             with torch.inference_mode():
                 output = self.policy.infer(build.feature)
             post = None
-            if sim_cfg.get("postprocess", True):
+            if self.postprocessor is not None and sim_cfg.get("postprocess", True):
                 post = self.postprocessor.run(
                     model_output=output["raw_output"],
                     normalized_data=build.normalized_numpy_data,

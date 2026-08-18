@@ -98,13 +98,27 @@ def main() -> int:
         checkpoint_path=str(bundle / plan_cfg["checkpoint"]),
         device=args.device or plan_cfg.get("device", "cpu"),
     )
-    postprocessor = get_postprocessor(plan_cfg.get("postprocess", {})["name"])(
-        vehicle_parameters=clip["vehicle_parameters"]
-    )
+    # postprocess 계약은 optional (run_inference와 동일 해석 — issue #30):
+    # 키 부재 또는 enabled=False 면 postprocessor 없이 조립한다.
+    post_cfg = plan_cfg.get("postprocess") or {}
+    postprocessor = None
+    if post_cfg.get("enabled", True) and post_cfg.get("name"):
+        postprocessor = get_postprocessor(post_cfg["name"])(
+            vehicle_parameters=clip["vehicle_parameters"]
+        )
 
     mode = sim_cfg["mode"]
     renderer_cls = get_renderer(sim_cfg["renderer"])
     renderer = renderer_cls(clip=clip, map_graph=map_graph, sim_cfg=sim_cfg, mode=mode)
+
+    if mode == "closed_loop" and postprocessor is None:
+        raise SystemExit(
+            "closed_loop requires a postprocessor: best-trajectory selection is the "
+            "model adapter's responsibility (driver stays model-agnostic).\n"
+            "Action: provide planning config postprocess=dict(enabled=True, name=<registry key>) "
+            "(a model without evaluation logic can register a passthrough postprocessor "
+            "that returns its output trajectory in global frame)."
+        )
 
     driver_cls = get_ego_driver(MODE_TO_DRIVER[mode])
     driver = driver_cls(
