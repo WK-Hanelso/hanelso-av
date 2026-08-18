@@ -1,4 +1,4 @@
-# dopamine-av Docker — 스펙 필요성 정리 (왜 이렇게 만들었나)
+# hanelso-av Docker — 스펙 필요성 정리 (왜 이렇게 만들었나)
 
 > 이 문서는 **docker 이미지가 만들어지기까지의 각 스펙 결정이 "왜 필요했는가"** 를 정리한다.
 > 사용법(빌드·실행 명령)은 [README.md](README.md), 정본 명세는 [SPEC.md](SPEC.md) 참고.

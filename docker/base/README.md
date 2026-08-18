@@ -1,8 +1,8 @@
-# dopamine-av Environment Image
+# hanelso-av Environment Image
 
 ## 개요
 
-이 이미지는 `dopamine-av`의 실행 환경만 제공한다. 프로젝트 소스는 이미지를 빌드할 때 넣지 않고 `git clone`으로 확보한 뒤 `docker run`에서 마운트한다. PLUTO 소스는 프로젝트 내부(`planning/models/pluto/src/`)에 vendored 되어 있어 **git clone에 포함**된다(외부 마운트 불요).
+이 이미지는 `hanelso-av`의 실행 환경만 제공한다. 프로젝트 소스는 이미지를 빌드할 때 넣지 않고 `git clone`으로 확보한 뒤 `docker run`에서 마운트한다. PLUTO 소스는 프로젝트 내부(`planning/models/pluto/src/`)에 vendored 되어 있어 **git clone에 포함**된다(외부 마운트 불요).
 
 목표 파이프라인은 다음과 같다.
 
