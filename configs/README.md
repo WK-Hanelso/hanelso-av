@@ -37,11 +37,17 @@ config = dict(
 
 ## 사용 예
 
+실행은 항상 `docker run`(환경 = 이미지). 원샷은 `scripts/sim.sh`가 docker를 자동 처리한다.
+
 ```bash
-python3 parse_clip.py configs/e100bt25.py                   # 파싱 (docker 단일 환경)
-python3 planning/run_inference.py configs/e100bt25.py       # 추론
-python3 simulation/render_sim.py configs/e100bt25.py --steps 3
+docker run --rm -v "$PWD":/workspace -w /workspace swm-base:latest \
+  python parse_clip.py configs/e100bt25.py                  # 파싱
+docker run --rm -v "$PWD":/workspace -w /workspace swm-base:latest \
+  python planning/run_inference.py configs/e100bt25.py      # 추론
+docker run --rm -v "$PWD":/workspace -w /workspace swm-base:latest \
+  python simulation/render_sim.py configs/e100bt25.py --steps 3
 ```
+(bag 등 원본 접근 시 데이터 디스크 마운트 추가: `-v /mnt/hdd_storage:/mnt/hdd_storage` — [../docker/README.md](../docker/README.md))
 
 `modules.planning` 이름은 `planning/models/<이름>/` 동적 로딩에도 쓰인다 — 없는 이름이면
 Available 목록을 포함한 에러.

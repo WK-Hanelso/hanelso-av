@@ -583,8 +583,7 @@ def inspect_record_for_run_sim(record_path: str, maps_root: Path) -> Dict[str, o
     """run_sim용 lightweight record inspection.
 
     Returns required topic presence plus the existing parser_validation map-match
-    decision so orchestration code can stay stdlib-only and call into this via
-    `.venv-apollo/bin/python`.
+    decision so orchestration code can stay stdlib-only.
     """
     topic_counts: Dict[str, int] = defaultdict(int)
     pose_rows: List[Tuple[int, float, float, float]] = []

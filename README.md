@@ -103,7 +103,7 @@ record(.record) ─┬─▶ ① inspect_record   토픽/맵/차량 판정 (tool
                  │         scene_log · route · map_graph)
                  └─▶ ③ render_sim.py     closed_loop_nuplan 시뮬 → mp4 + metrics
 ```
-- docker 이미지(swm-base/pluto-inf) 하나에 파싱·추론·렌더 의존성이 모두 있어, 세 스테이지가 컨테이너 **단일 환경**에서 돈다 (host `.venv-apollo` 불필요).
+- docker 이미지(swm-base/pluto-inf) 하나에 파싱·추론·렌더 의존성이 모두 있어, 세 스테이지가 컨테이너 **단일 환경**에서 돈다 (host 파이썬 env 불필요 — 실행은 항상 `docker run`).
 
 ### 빠른 시작 — `scripts/sim.sh` (docker 한 줄, 권장)
 
@@ -125,10 +125,13 @@ scripts/sim.sh data/bag/E100BT-25/20260716151711.record.00006 --gpu --steps 100
 > 런처 없이 직접(`docker run …` 또는 host env)은 [docker/README.md](docker/README.md) 참고.
 
 ### 모델 직접 추론 (planning 도메인)
+실행은 항상 `docker run` — 실추론(GPU)은 모델 소유 이미지 `pluto-inf`, 오프라인 sim(CPU)은 공용 이미지 `swm-base`.
+
 ```bash
-# 실추론(GPU): 모델 소유 이미지 pluto-inf
-python3 planning/run_inference.py configs/<scenario>.py --device cuda
-# 오프라인 sim(CPU): 공용 이미지 swm-base → simulation/render_sim.py
+docker run --rm --gpus all -v "$PWD":/workspace -w /workspace pluto-inf:latest \
+  python planning/run_inference.py configs/<scenario>.py --device cuda
+docker run --rm -v "$PWD":/workspace -w /workspace swm-base:latest \
+  python simulation/render_sim.py configs/<scenario>.py
 ```
 자세한 배치·registry·env 규약은 [planning/README.md](planning/README.md), 이미지 빌드는 [docker/README.md](docker/README.md) 참고.
 

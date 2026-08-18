@@ -1,4 +1,4 @@
-"""parse driver: 원본 record -> work/<clip_id>/parsed (공용 파이프라인, .venv-apollo).
+"""parse driver: 원본 record -> work/<clip_id>/parsed (공용 파이프라인 — docker swm-base에서 실행).
 
     python parse_clip.py configs/e100bt25.py
 
@@ -32,7 +32,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         raise SystemExit(_usage())
 
     # 파싱은 root 필드만 소비 — 모듈 도메인 해석이 필요 없어 load_config_file 사용
-    # (.venv-apollo에서도 stdlib만으로 동작).
+    # (stdlib만으로 동작 — 경량 환경 호환).
     cfg = load_config_file(resolve_repo_path(argv[0]))
     parse_kwargs = {
         "record": cfg["record"],
