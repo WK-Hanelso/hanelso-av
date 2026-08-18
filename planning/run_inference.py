@@ -312,12 +312,16 @@ def main() -> int:
     with open(resolve_repo_path(cfg["map_path"])) as f:
         map_graph = json.load(f)
 
+    bundle = resolve_repo_path(plan_cfg["bundle"])
     config = {
         "clip_id": clip_id,
         "map_name": cfg["map_name"],
         "feature_vehicle": plan_cfg.get("feature_vehicle", "pacifica"),
         "calibration": cfg["calibration"],
         "data": cfg.get("data"),
+        # issue #22: agent/static 상한의 SoT = 번들 native config — dataloader가 읽는다.
+        "bundle": str(bundle),
+        "model_config": plan_cfg["model_config"],
     }
 
     adapter_cls = get_dataloader(plan_cfg["dataloader"])
@@ -329,7 +333,6 @@ def main() -> int:
         t0_time=args.t0_time,
     )
 
-    bundle = resolve_repo_path(plan_cfg["bundle"])
     device = args.device or plan_cfg.get("device", "cpu")
     policy_kwargs = {
         "config_path": str(bundle / plan_cfg["model_config"]),

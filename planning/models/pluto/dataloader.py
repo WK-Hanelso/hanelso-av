@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
+import yaml
 
 from calibration.vehicle import (
     apply_imu_lateral_offset,
@@ -22,16 +23,25 @@ from planning.interface import Dataloader, register_dataloader
 HIST_STEPS = 21
 DT = 0.1
 RADIUS = 120.0
-MAX_AGENTS = 32
 REF_STEPS = 120
 REF_SPACING = 1.0
-MAX_STATIC = 32
 MAX_LANES = 80
 MAX_CROSSWALKS = 32
 LANE_POINTS = 20
 CROSSWALK_POINTS = 20
-STATIC_SPEED_THRESHOLD_MPS = 0.5
 ON_ROUTE_THRESHOLD_M = 5.0
+
+# 학습 규격 상한 (issue #22): agent/static 상한의 단일 근거 = 모델 번들 native config
+# (feature_builder.max_agents / max_static_obstacles) — 값을 여기에 전사하지 않는다.
+# 아래는 원본 builder(src/feature_builders/pluto_feature_builder.py) 시그니처 기본값으로,
+# native config에 해당 키가 없을 때만 쓰인다.
+NATIVE_DEFAULT_MAX_AGENTS = 64   # ego 제외 — 학습 builder는 ego 1행을 이 밖에 prepend
+NATIVE_DEFAULT_MAX_STATIC = 10
+
+# 동적 객체 = 스스로 움직일 수 있는 종류 (학습 interested_objects_types와 동일: issue #23).
+# 정지 여부는 분류에 관여하지 않는다 — 신호 대기 차량·멈춰 선 보행자도 동적 객체다.
+# 그 외 종류(unknown 등)는 학습의 static_objects_types(시설물)에 대응시켜 static으로 보낸다.
+DYNAMIC_CATEGORIES = ("vehicle", "pedestrian", "bicycle")
 MAP_SELECTION_MARGIN_M = 15.0
 
 PACIFICA_DIMS = (2.297, 5.176)
@@ -47,6 +57,49 @@ CATEGORY_CODES = {
     "bicycle": 3,
     "unknown": 4,
 }
+
+
+def _find_mapping_key(payload: object, key: str) -> Optional[dict]:
+    """중첩 dict/list에서 첫 번째 `key` 매핑을 찾는다 (hydra dump 구조 무관)."""
+    if isinstance(payload, dict):
+        if key in payload and isinstance(payload[key], dict):
+            return payload[key]
+        for value in payload.values():
+            found = _find_mapping_key(value, key)
+            if found is not None:
+                return found
+    elif isinstance(payload, list):
+        for value in payload:
+            found = _find_mapping_key(value, key)
+            if found is not None:
+                return found
+    return None
+
+
+def native_feature_limits(config: dict) -> Tuple[int, int, str]:
+    """모델 번들 native config(SoT)에서 (max_agents, max_static, source)를 읽는다.
+
+    issue #22: 주변 agent 상한은 모델 학습 설정이 사실의 단일 근거다. 학습 builder는
+    ego 1행을 max_agents **밖에서** prepend하므로 agent 텐서 행수는 max_agents + 1
+    (slot 0 = ego)이다.
+    """
+    bundle = config.get("bundle")
+    model_config = config.get("model_config")
+    if not bundle or not model_config:
+        raise ValueError(
+            "dataloader config에 bundle/model_config가 없습니다 — agent/static 상한은 "
+            "모델 번들 native config에서 읽습니다 (issue #22). 조립 드라이버가 "
+            "planning config의 bundle 경로를 config에 넣어 전달해야 합니다."
+        )
+    config_path = Path(str(bundle)) / str(model_config)
+    with config_path.open() as handle:
+        native = yaml.safe_load(handle)
+    feature_builder = _find_mapping_key(native, "feature_builder") or {}
+    max_agents = int(feature_builder.get("max_agents", NATIVE_DEFAULT_MAX_AGENTS))
+    max_static = int(
+        feature_builder.get("max_static_obstacles", NATIVE_DEFAULT_MAX_STATIC)
+    )
+    return max_agents, max_static, f"{config_path}:feature_builder"
 
 
 def _load_json(path: Path) -> object:
@@ -300,6 +353,7 @@ class PlutoFeedBuilder:
         feature_ego_dims = FEATURE_VEHICLE_DIMENSIONS.get(feature_vehicle, PACIFICA_DIMS)
         physical_ego_dims = calibration_ego_dims(calib)
         vehicle_parameters = to_vehicle_parameters(calib)
+        max_agents_native, max_static_native, feature_limits_source = native_feature_limits(config)
 
         return {
             "samples": samples,
@@ -323,6 +377,9 @@ class PlutoFeedBuilder:
             "max_tire_angle_rad": max_tire_angle(calib),
             "calibration": calib,
             "imu_lat_sign": imu_sign,
+            "max_agents_native": max_agents_native,
+            "max_static_native": max_static_native,
+            "feature_limits_source": feature_limits_source,
             "logfile": tables["log"][0]["logfile"],
         }
 
@@ -384,12 +441,16 @@ class PlutoFeedBuilder:
         angle = float(dataset["ego_headings"][t0_index])
         rot_inv = _rotation_matrix(-angle)
 
-        agent_position = np.zeros((MAX_AGENTS, HIST_STEPS, 2), dtype=np.float32)
-        agent_heading = np.zeros((MAX_AGENTS, HIST_STEPS), dtype=np.float32)
-        agent_velocity = np.zeros((MAX_AGENTS, HIST_STEPS, 2), dtype=np.float32)
-        agent_shape = np.zeros((MAX_AGENTS, 2), dtype=np.float32)
-        agent_category = np.full((MAX_AGENTS,), CATEGORY_CODES["unknown"], dtype=np.int32)
-        agent_valid_mask = np.zeros((MAX_AGENTS, HIST_STEPS), dtype=bool)
+        max_agents = int(dataset["max_agents_native"])
+        max_static = int(dataset["max_static_native"])
+        agent_rows = max_agents + 1  # slot 0 = ego (학습 builder의 ego prepend 재현)
+
+        agent_position = np.zeros((agent_rows, HIST_STEPS, 2), dtype=np.float32)
+        agent_heading = np.zeros((agent_rows, HIST_STEPS), dtype=np.float32)
+        agent_velocity = np.zeros((agent_rows, HIST_STEPS, 2), dtype=np.float32)
+        agent_shape = np.zeros((agent_rows, 2), dtype=np.float32)
+        agent_category = np.full((agent_rows,), CATEGORY_CODES["unknown"], dtype=np.int32)
+        agent_valid_mask = np.zeros((agent_rows, HIST_STEPS), dtype=bool)
 
         ego_positions_hist = dataset["ego_positions"][history_indices]
         ego_local = _transform_points(ego_positions_hist, origin_xy, rot_inv)
@@ -418,20 +479,21 @@ class PlutoFeedBuilder:
             distance = float(np.linalg.norm(position - origin_xy))
             if distance > RADIUS + MAP_SELECTION_MARGIN_M:
                 continue
-            speed = float(np.linalg.norm(track["velocities"][ann_idx]))
-            if speed <= STATIC_SPEED_THRESHOLD_MPS:
-                static_candidates.append((distance, instance_token))
-            else:
+            # 종류 기반 분류 (issue #23): 정지 여부와 무관하게 자주행 가능
+            # 종류는 동적, 그 외는 static(시설물 슬롯)으로.
+            if track["category"] in DYNAMIC_CATEGORIES:
                 candidates.append((distance, instance_token))
+            else:
+                static_candidates.append((distance, instance_token))
         candidates.sort(key=lambda item: item[0])
         static_candidates.sort(key=lambda item: item[0])
 
-        selected_agents = [instance_token for _, instance_token in candidates[: MAX_AGENTS - 1]]
+        selected_agents = [instance_token for _, instance_token in candidates[:max_agents]]
         selected_static = [
             instance_token
             for _, instance_token in static_candidates
             if instance_token not in selected_agents
-        ][:MAX_STATIC]
+        ][:max_static]
 
         for agent_slot, instance_token in enumerate(selected_agents, start=1):
             track = dataset["track_data"][instance_token]
@@ -456,10 +518,10 @@ class PlutoFeedBuilder:
                 )
             agent_category[agent_slot] = CATEGORY_CODES.get(track["category"], CATEGORY_CODES["unknown"])
 
-        static_position = np.zeros((MAX_STATIC, 2), dtype=np.float32)
-        static_heading = np.zeros((MAX_STATIC,), dtype=np.float32)
-        static_shape = np.zeros((MAX_STATIC, 2), dtype=np.float32)
-        static_valid_mask = np.zeros((MAX_STATIC,), dtype=bool)
+        static_position = np.zeros((max_static, 2), dtype=np.float32)
+        static_heading = np.zeros((max_static,), dtype=np.float32)
+        static_shape = np.zeros((max_static, 2), dtype=np.float32)
+        static_valid_mask = np.zeros((max_static,), dtype=bool)
         for static_slot, instance_token in enumerate(selected_static):
             track = dataset["track_data"][instance_token]
             ann_idx = track["sample_to_index"][t0_sample_token]
@@ -567,10 +629,12 @@ class PlutoFeedBuilder:
                 "yaw_rate_rps",
             ],
             "shape_constants": {
-                "MAX_AGENTS": MAX_AGENTS,
+                "AGENT_ROWS": agent_rows,
+                "MAX_AGENTS_NATIVE": max_agents,
+                "FEATURE_LIMITS_SOURCE": dataset["feature_limits_source"],
                 "HIST_STEPS": HIST_STEPS,
                 "REF_STEPS": REF_STEPS,
-                "MAX_STATIC": MAX_STATIC,
+                "MAX_STATIC": max_static,
                 "MAX_LANES": MAX_LANES,
                 "LANE_POINTS": LANE_POINTS,
                 "MAX_CROSSWALKS": MAX_CROSSWALKS,
@@ -948,12 +1012,16 @@ class ApolloPlutoDataloader(Dataloader):
             ).copy()
             angle = float(ego_override["heading"][-1])
 
-        agent_position = np.zeros((MAX_AGENTS, TOTAL_STEPS, 2), dtype=np.float64)
-        agent_heading = np.zeros((MAX_AGENTS, TOTAL_STEPS), dtype=np.float64)
-        agent_velocity = np.zeros((MAX_AGENTS, TOTAL_STEPS, 2), dtype=np.float64)
-        agent_shape = np.zeros((MAX_AGENTS, TOTAL_STEPS, 2), dtype=np.float64)
-        agent_category = np.zeros((MAX_AGENTS,), dtype=np.int8)
-        agent_valid_mask = np.zeros((MAX_AGENTS, TOTAL_STEPS), dtype=bool)
+        max_agents = int(dataset["max_agents_native"])
+        max_static = int(dataset["max_static_native"])
+        agent_rows = max_agents + 1  # slot 0 = ego (학습 builder의 ego prepend 재현)
+
+        agent_position = np.zeros((agent_rows, TOTAL_STEPS, 2), dtype=np.float64)
+        agent_heading = np.zeros((agent_rows, TOTAL_STEPS), dtype=np.float64)
+        agent_velocity = np.zeros((agent_rows, TOTAL_STEPS, 2), dtype=np.float64)
+        agent_shape = np.zeros((agent_rows, TOTAL_STEPS, 2), dtype=np.float64)
+        agent_category = np.zeros((agent_rows,), dtype=np.int8)
+        agent_valid_mask = np.zeros((agent_rows, TOTAL_STEPS), dtype=bool)
 
         if ego_override is None:
             ego_positions_hist = dataset["ego_positions"][history_indices]
@@ -990,20 +1058,21 @@ class ApolloPlutoDataloader(Dataloader):
             distance = float(np.linalg.norm(position - origin_xy))
             if distance > RADIUS + MAP_SELECTION_MARGIN_M:
                 continue
-            speed = float(np.linalg.norm(track["velocities"][ann_idx]))
-            if speed <= STATIC_SPEED_THRESHOLD_MPS:
-                static_candidates.append((distance, instance_token))
-            else:
+            # 종류 기반 분류 (issue #23): 정지 여부와 무관하게 자주행 가능
+            # 종류는 동적, 그 외는 static(시설물 슬롯)으로.
+            if track["category"] in DYNAMIC_CATEGORIES:
                 dynamic_candidates.append((distance, instance_token))
+            else:
+                static_candidates.append((distance, instance_token))
         dynamic_candidates.sort(key=lambda item: item[0])
         static_candidates.sort(key=lambda item: item[0])
 
-        selected_agents = [token for _, token in dynamic_candidates[: MAX_AGENTS - 1]]
+        selected_agents = [token for _, token in dynamic_candidates[:max_agents]]
         selected_static = [
             token
             for _, token in static_candidates
             if token not in selected_agents
-        ][:MAX_STATIC]
+        ][:max_static]
 
         for agent_slot, instance_token in enumerate(selected_agents, start=1):
             track = dataset["track_data"][instance_token]
@@ -1027,11 +1096,11 @@ class ApolloPlutoDataloader(Dataloader):
             category = CATEGORY_CODES.get(track["category"], CATEGORY_CODES["vehicle"])
             agent_category[agent_slot] = np.int8(max(0, min(3, category)))
 
-        static_position = np.zeros((MAX_STATIC, 2), dtype=np.float64)
-        static_heading = np.zeros((MAX_STATIC,), dtype=np.float64)
-        static_shape = np.zeros((MAX_STATIC, 2), dtype=np.float64)
-        static_category = np.full((MAX_STATIC,), STATIC_GENERIC, dtype=np.int8)
-        static_valid_mask = np.zeros((MAX_STATIC,), dtype=bool)
+        static_position = np.zeros((max_static, 2), dtype=np.float64)
+        static_heading = np.zeros((max_static,), dtype=np.float64)
+        static_shape = np.zeros((max_static, 2), dtype=np.float64)
+        static_category = np.full((max_static,), STATIC_GENERIC, dtype=np.int8)
+        static_valid_mask = np.zeros((max_static,), dtype=bool)
         for slot, instance_token in enumerate(selected_static):
             track = dataset["track_data"][instance_token]
             ann_idx = track["sample_to_index"][t0_sample_token]
