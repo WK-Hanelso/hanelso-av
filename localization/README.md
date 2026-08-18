@@ -3,7 +3,7 @@
 ego pose와 시간 기준을 확립하는 도메인 — 현재 뼈대만
 (Apollo MSF pose 소비는 `data_devkit/parsers/pose/`).
 
-## 구조 (모델-우선 패턴 예비, C-SWM-023)
+## 구조 (모델-우선 패턴 예비)
 
 | 경로 | 역할 |
 |---|---|

@@ -1,7 +1,7 @@
 # data_devkit/ — 데이터 생산·계약·검증 최상위 모듈
 
 이종 원본(record/map)을 우리 통합 포맷(`work/`)으로 만드는 **파서**와, 그 산출물(아티팩트)의
-**계약(존재+스키마) 검증**을 담는다. 구 `common/io`의 승격(C-SWM-023).
+**계약(존재+스키마) 검증**을 담는다. 구 `common/io`의 승격.
 
 **핵심 원칙**: devkit은 모델을 모른다(모델별 분기 금지). 각 모델의 dataloader가
 `REQUIRES`(아티팩트 이름 목록)를 선언하고 `contract.check()`로 fail-fast 검증한다.
@@ -49,8 +49,8 @@ contract.check(
 파싱 드라이버 — 실행은 항상 `docker run`:
 
 ```bash
-docker run --rm -v "$PWD":/workspace -w /workspace swm-base:latest \
+docker run --rm -v "$PWD":/workspace -w /workspace av-base:latest \
   python parse_clip.py configs/e100bt25.py
-docker run --rm -v "$PWD":/workspace -w /workspace swm-base:latest \
+docker run --rm -v "$PWD":/workspace -w /workspace av-base:latest \
   python parse_map.py --map <base_map.bin> --name AYG
 ```

@@ -22,7 +22,7 @@ WORK_ROOT = REPO_ROOT / "work"
 MAPS_ROOT = WORK_ROOT / "maps"
 
 # 기본: run_sim.py 를 실행한 인터프리터 하나로 전 스테이지를 돈다.
-# docker swm-base 처럼 파싱·추론·렌더 의존성이 한 환경에 모여 있는 경우가 기본 경로 —
+# docker av-base 처럼 파싱·추론·렌더 의존성이 한 환경에 모여 있는 경우가 기본 경로 —
 # host 에 별도 파이썬 env 가 없어도 컨테이너 단일 환경에서 그대로 동작한다.
 # 스테이지별로 다른 인터프리터가 필요하면 env 로 오버라이드:
 #   RUN_SIM_PY_INSPECT_RECORD / RUN_SIM_PY_PARSE_CLIP / RUN_SIM_PY_RENDER_SIM
@@ -344,7 +344,7 @@ def main() -> int:
             f"record: {record_path}\n"
             f"available maps: {known_maps}\n"
             "Action: obtain the source HD map for this area and run "
-            "`docker run --rm -v \"$PWD\":/workspace -w /workspace swm-base:latest "
+            "`docker run --rm -v \"$PWD\":/workspace -w /workspace av-base:latest "
             "python parse_map.py --map <base_map.bin> --name <map_name>`."
         )
     map_path = Path(map_match["matched_map_path"]).resolve()

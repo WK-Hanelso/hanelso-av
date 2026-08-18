@@ -75,7 +75,7 @@ CUDA/nvidia 패키지 = 없음
 ```
 → **CUDA 의존 0 → x86-64 리눅스면 GPU 종류·유무와 무관하게 동작.** A6000/5880/3080/1080/2060 전부 OK.
 ※ CPU 유지 정책상, 만약 향후 다른 이유로 GPU가 필요해지면 GPU 이미지가 아니라 **onnx 경로로 우회**해 CPU를 유지한다.
-> **정정(2026-07-31)**: 이후 GPU **실추론** 경로는 모델 소유 이미지 `pluto-inf`(build-arg로 GPU 플랫폼별 빌드, `docker/pluto-inf/`)로 분리됐다. 공용 파이프라인(파싱·sim·render)은 여전히 이 CPU 이미지(swm-base)다.
+> **정정(2026-07-31)**: 이후 GPU **실추론** 경로는 모델 소유 이미지 `pluto-inf`(build-arg로 GPU 플랫폼별 빌드, `docker/pluto-inf/`)로 분리됐다. 공용 파이프라인(파싱·sim·render)은 여전히 이 CPU 이미지(av-base)다.
 
 ---
 
@@ -130,7 +130,7 @@ python:3.9-slim-bullseye
   → pip install --no-deps "git+…nuplan-devkit.git@e924167"                            (§3)
   → HEALTHCHECK: 설치형 의존성 import                                                  (§8)
 ```
-결과 이미지: `swm-base:latest` (CPU 전용, x86-64, ~3.8GB).
+결과 이미지: `av-base:latest` (CPU 전용, x86-64, ~3.8GB).
 
 ---
 

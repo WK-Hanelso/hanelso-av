@@ -1,4 +1,4 @@
-"""Original pluto NuplanScenarioRender wired as a Renderer (C-SWM-019).
+"""Original pluto NuplanScenarioRender wired as a Renderer.
 
 Per frame:
 - PlannerInput: SimulationHistoryBuffer accumulated from OUR EgoState /

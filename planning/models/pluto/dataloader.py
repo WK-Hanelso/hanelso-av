@@ -36,7 +36,7 @@ MAP_SELECTION_MARGIN_M = 15.0
 
 PACIFICA_DIMS = (2.297, 5.176)
 FEATURE_VEHICLE_DIMENSIONS = {"pacifica": PACIFICA_DIMS}
-# C-SWM-026 sign experiment on BT-25/BT-22 kept +1 as the default:
+# BT-25/BT-22 sign experiment kept +1 as the default:
 # BT-22 improved both reference and lane-center distances; BT-25 split.
 DEFAULT_IMU_LAT_SIGN = 1.0
 
@@ -719,7 +719,7 @@ class AdapterBuildResult:
 
 
 class ApolloPlutoDataloader(Dataloader):
-    # 데이터 계약 (C-SWM-023): 이 dataloader가 소비하는 data_devkit 아티팩트.
+    # 데이터 계약: 이 dataloader가 소비하는 data_devkit 아티팩트.
     # prepare_clip()/build() 시작 시 data_devkit.contract.check로 fail-fast
     # 검증한다 (누락 시 "무엇을 돌려야 하는지" 안내 포함 예외).
     # 스펙 §3의 6종 + scene_log(_load_tables가 scene/log.json도 읽으므로 명시).
@@ -808,7 +808,7 @@ class ApolloPlutoDataloader(Dataloader):
 
     # ------------------------------------------------------------- sim API
     #
-    # C-SWM-018: repeated per-frame builds for the simulation driver.
+    # repeated per-frame builds for the simulation driver.
     #   prepare_clip()  loads/caches everything that is frame-independent
     #                   (parsed tables, route.json event history, ApolloMap).
     #   build_frame()   builds a PlutoFeature for an arbitrary log frame
@@ -1151,7 +1151,7 @@ class ApolloPlutoDataloader(Dataloader):
             "adapter_notes": [
                 "Agent tensors use T=101 with history/present in slots [0:21] and future slots zero-filled with valid_mask=False.",
                 "Static objects are approximated from low-speed tracked annotations at t0 and mapped to GENERIC static category.",
-                "Reference lines come from the original pluto ScenarioManager/RouteManager driven through ApolloMap (C-SWM-017); the C-SWM-015 reimplementation was removed.",
+                "Reference lines come from the original pluto ScenarioManager/RouteManager driven through ApolloMap; the earlier reimplementation was removed.",
                 "Reference line is built from map+route only; ego future poses are not referenced.",
                 "reference_line.future_projection is zero-filled intentionally to avoid ego future leakage.",
                 "Traffic light status is unresolved from the Apollo feed and set to UNKNOWN for every map polygon.",
@@ -1243,7 +1243,7 @@ class ApolloPlutoDataloader(Dataloader):
     ) -> Dict[str, Any]:
         """Drives the original pluto ScenarioManager/RouteManager over ApolloMap.
 
-        This replaces the C-SWM-015 reference-line reimplementation (which
+        This replaces the earlier reference-line reimplementation (which
         over-generated R by skipping the original "merge repeated lanes"
         candidate-pruning step). The original ScenarioManager output is
         authoritative.

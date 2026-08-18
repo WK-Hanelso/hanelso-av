@@ -1,4 +1,4 @@
-"""perception 인터페이스 placeholder (C-SWM-023 — planning/interface.py 패턴 예비).
+"""perception 인터페이스 placeholder (planning/interface.py 패턴 예비).
 
 perception 모델이 처음 들어올 때 planning/interface.py와 같은 구성으로 채운다:
 - 도메인 ABC + registry (예: perception이면 Detector 등 — 실물 들어올 때 정의)

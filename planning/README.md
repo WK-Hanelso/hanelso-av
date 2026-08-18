@@ -1,7 +1,7 @@
 # planning/ — 궤적 생성 도메인
 
-C-SWM-023에서 **모델-우선 배치**로 재편: 모델의 모든 코드는 `models/<이름>/` 한 디렉토리
-소유, 드라이버는 동적 로딩(`interface.load_model`)으로만 접근한다. PLUTO는 C-SWM-024에서
+**모델-우선 배치**로 재편됨: 모델의 모든 코드는 `models/<이름>/` 한 디렉토리
+소유, 드라이버는 동적 로딩(`interface.load_model`)으로만 접근한다. PLUTO는
 `third_party` vendoring을 해체했고, 모델 소스는 `models/pluto/src/`에서 직접 수정한다.
 nuPlan 계열 공용부(sim/평가/route/reference-line)는 `nuplan_common/`로 승격되어 planning
 도메인이 소유한다.
@@ -20,7 +20,7 @@ nuPlan 계열 공용부(sim/평가/route/reference-line)는 `nuplan_common/`로 
 ## 실행 경로와 env
 
 - **실추론(GPU)**: `run_inference.py --device cuda` — 모델 소유 이미지 `pluto-inf`(`docker/pluto-inf/`).
-- **오프라인 검증(sim/CPU)**: `simulation/render_sim.py` — 공용 이미지 `swm-base`.
+- **오프라인 검증(sim/CPU)**: `simulation/render_sim.py` — 공용 이미지 `av-base`.
 
 모델 아티팩트는 bundle(`data/model/pluto_v3/{v3_pluto.ckpt, config.yaml}`) 쌍으로 관리 —
 ckpt와 학습 native config는 같은 디렉토리, 우리 config는 경로만 참조(전사 금지).

@@ -1,4 +1,4 @@
-"""데이터 계약 — 아티팩트 registry + 존재/스키마 check (C-SWM-023).
+"""데이터 계약 — 아티팩트 registry + 존재/스키마 check.
 
 계약
 ----
@@ -54,11 +54,11 @@ class ArtifactSpec:
 
 
 _PARSE_HINT = (
-    "run: docker run --rm -v \"$PWD\":/workspace -w /workspace swm-base:latest "
+    "run: docker run --rm -v \"$PWD\":/workspace -w /workspace av-base:latest "
     "python parse_clip.py configs/<root>.py (root config with clip_id={clip_id})"
 )
 _MAP_HINT = (
-    "run: docker run --rm -v \"$PWD\":/workspace -w /workspace swm-base:latest "
+    "run: docker run --rm -v \"$PWD\":/workspace -w /workspace av-base:latest "
     "python parse_map.py --map <base_map.bin> --name {map_name}"
 )
 

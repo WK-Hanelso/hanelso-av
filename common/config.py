@@ -1,4 +1,4 @@
-"""계층 config 조합 로더 (C-SWM-022).
+"""계층 config 조합 로더.
 
 계약
 ----
@@ -59,7 +59,7 @@ def load_config_file(path: Union[str, Path]) -> Dict[str, Any]:
     path = Path(path).resolve()
     if not path.exists():
         raise FileNotFoundError(f"Config file not found: {path}")
-    spec = importlib.util.spec_from_file_location(f"_swm_cfg_{path.stem}", path)
+    spec = importlib.util.spec_from_file_location(f"_config_{path.stem}", path)
     if spec is None or spec.loader is None:
         raise ImportError(f"Failed to load config module: {path}")
     module = importlib.util.module_from_spec(spec)

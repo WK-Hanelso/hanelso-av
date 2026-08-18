@@ -40,14 +40,14 @@
 ## 실행
 
 ```bash
-docker run --rm -v "$PWD":/workspace -w /workspace swm-base:latest \
+docker run --rm -v "$PWD":/workspace -w /workspace av-base:latest \
   -v /mnt/hdd_storage:/mnt/hdd_storage \
   python tools/parser_validation/validate.py \
   --record data/bag/E100BT-25/20260716151711.record.00006
 ```
 
 ```bash
-docker run --rm -v "$PWD":/workspace -w /workspace swm-base:latest \
+docker run --rm -v "$PWD":/workspace -w /workspace av-base:latest \
   python tools/parser_validation/validate.py --map-only AYG
 ```
 

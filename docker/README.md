@@ -2,8 +2,8 @@
 
 ## 규약 (config `env` 필드)
 
-- **공용 파이프라인**(파싱·input·sim·render, 전부 CPU) → `swm-base` 이미지.
-  simulation 모듈 config의 `env="swm-base"`.
+- **공용 파이프라인**(파싱·input·sim·render, 전부 CPU) → `av-base` 이미지.
+  simulation 모듈 config의 `env="av-base"`.
 - **모델 실추론**(GPU) → 이미지는 **모델이 소유**하고 `<모델>-inf`로 명명한다.
   planning 모듈 config의 `env="pluto-inf"` — 그 모델의 추론 환경(torch/CUDA 버전)은
   모델 config가 결정하고, 파이프라인은 이름만 참조한다.
@@ -15,14 +15,14 @@
 
 | 경로 | 이미지 | 내용 |
 |---|---|---|
-| `base/` | `swm-base:latest` | python3.9 + torch 1.12 **CPU** + 검증 freeze + nuplan-devkit. 전 파이프라인(parse→input→추론(CPU)→sim→mp4) 컨테이너 검증됨. 빌드/사용법은 `base/README.md`. |
+| `base/` | `av-base:latest` | python3.9 + torch 1.12 **CPU** + 검증 freeze + nuplan-devkit. 전 파이프라인(parse→input→추론(CPU)→sim→mp4) 컨테이너 검증됨. 빌드/사용법은 `base/README.md`. |
 | `pluto-inf/` | `pluto-inf:cu116` (외 arch 태그) | nvidia/cuda + python3.9 + torch(+cuXXX) + **자기 requirements.txt**(base 독립) + nuplan-devkit. 하나의 Dockerfile이 build-arg로 GPU 플랫폼별 빌드. GPU 전 파이프라인(추론·sim·mp4). |
 
 ## 빌드
 
 ```bash
 # CPU 공용
-docker build -t swm-base:latest -f docker/base/Dockerfile docker/base/
+docker build -t av-base:latest -f docker/base/Dockerfile docker/base/
 
 # GPU (pluto-inf) — 하나의 Dockerfile이 GPU 플랫폼별 변형을 build-arg로 빌드.
 # 컨텍스트 = docker/pluto-inf/ (자기 requirements.txt, base 참조 없음)
@@ -53,11 +53,11 @@ host 파이썬 env가 없어도 된다 — 파싱·추론·렌더 의존성이 �
 > bag 접근용 `/mnt/hdd_storage` 하나면 충분하다.
 
 ```bash
-# CPU (swm-base)
+# CPU (av-base)
 docker run --rm \
   -v "$PWD":/workspace \
   -v /mnt/hdd_storage:/mnt/hdd_storage \
-  -w /workspace swm-base:latest \
+  -w /workspace av-base:latest \
   python run_sim.py <record> --mode closed_loop
 
 # GPU (pluto-inf)

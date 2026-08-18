@@ -203,7 +203,7 @@ class ModelDrivenDriver(EgoDriver):
 
             # render at decision time (pre-step ego) for the official nuplan
             # renderer semantics; the matplotlib renderer draws the post-step
-            # state with the log ghost + sim trace (unchanged from C-SWM-018).
+            # state with the log ghost + sim trace (unchanged).
             renderer.render_frame(
                 frames_dir / f"frame_{step:05d}.png",
                 {

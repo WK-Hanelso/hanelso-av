@@ -2,7 +2,7 @@
 
 외부 repo의 소스 코드를 프로젝트 내부로 반입(vendor)하는 곳. **"git clone 하나로 재현"** 원칙을 위해, 외부 절대경로 `sys.path` 주입이나 docker 외부 마운트 대신 여기에 포함한다.
 
-현재 이 디렉토리는 **비어 있어도 정상**이다. C-SWM-024에서 PLUTO는 해체 온보딩을 거쳐
+현재 이 디렉토리는 **비어 있어도 정상**이다. PLUTO는 해체 온보딩을 거쳐
 `planning/models/pluto/src/`와 `planning/nuplan_common/`, `simulation/renderers/`로 분배됐다.
 
 ## 규약

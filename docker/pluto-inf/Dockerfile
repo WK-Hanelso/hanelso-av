@@ -1,5 +1,5 @@
 # pluto GPU 실추론 env — 이미지는 모델이 소유한다 (planning/configs/pluto.py env="pluto-inf").
-# 공용 파이프라인(파싱·sim·render)은 swm-base(CPU)로 돌고, GPU는 이 이미지를 쓴다.
+# 공용 파이프라인(파싱·sim·render)은 av-base(CPU)로 돌고, GPU는 이 이미지를 쓴다.
 # CPU 이미지(base)와 완전 독립: 자기 requirements.txt 를 가진다 (base 참조 없음).
 #
 # 하나의 Dockerfile 이 GPU 플랫폼(sm 대역)별 변형을 build-arg 로 빌드한다.
@@ -56,7 +56,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && ln -sf /usr/bin/python3.9 /usr/local/bin/python3
 
 # pip<24.1 고정: nuplan이 요구하는 hydra-core==1.1.0rc1 / omegaconf==2.1.0rc1 이
-# 낡은(invalid) 메타데이터라 pip 24.1+ 에서 설치 거부됨 (swm-base와 동일 사유)
+# 낡은(invalid) 메타데이터라 pip 24.1+ 에서 설치 거부됨 (av-base와 동일 사유)
 RUN curl -sS https://bootstrap.pypa.io/pip/3.9/get-pip.py | python3.9 \
     && pip install "pip<24.1"
 
