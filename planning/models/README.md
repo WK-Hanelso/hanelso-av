@@ -33,3 +33,4 @@ overlay 파일을 만들지 말고 `src/` 안에 클래스를 병존시키고 �
 | 디렉토리 | 파일 | registry 키 |
 |---|---|---|
 | `pluto/` | `policy.py`(PlutoTorchPolicy, strict ckpt 로드) · `dataloader.py`(ApolloPlutoDataloader + REQUIRES/check + feed-building body 포함) · `postprocess.py`(원본 TrajectoryEvaluator+EmergencyBrake 어댑터) · `src/`(PLUTO 모델 원본+학습 하네스 직접 소유) | policy=`pluto_torch`, dataloader=`pluto_feature`, post=`pluto` |
+| `sparsedrive_v2/` | **온보딩 1단계** — 슬롯·명세만 (해당 README.md = 명세 SoT). 이중 시스템의 System 1 기성품(SparseDriveV2, Apache-2.0), 수정 4종(goal K토큰·HD맵 prior·요소-인식 scoring·생존 정책) 예정 | 미구현 (import 시 fail-fast) |
