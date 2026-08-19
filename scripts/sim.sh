@@ -16,6 +16,7 @@ DOCKERFILE=docker/base/Dockerfile
 BUILD_CONTEXT=docker/base
 MODE=closed_loop
 STEPS=""
+MODEL=""
 VERBOSE=0
 USE_GPU=0
 RECORD=""
@@ -35,6 +36,7 @@ sim.sh — bag → 시뮬레이션 mp4 원샷 런처 (docker 자동 처리)
   --gpu          GPU로 실행 (pluto-inf 이미지 + CUDA). 기본은 CPU(av-base).
   --steps N      시뮬 스텝 수
   --mode M       closed_loop | open_loop  (기본: closed_loop)
+  --model NAME   planning 모델 이름 (모델이 여러 개일 때 필수)
   --verbose      빌드/실행 상세 로그 출력
   -h, --help     이 도움말
 
@@ -54,6 +56,7 @@ while [[ $# -gt 0 ]]; do
     --gpu)     USE_GPU=1; shift ;;
     --steps)   STEPS="${2:?--steps 값이 필요합니다}"; shift 2 ;;
     --mode)    MODE="${2:?--mode 값이 필요합니다}"; shift 2 ;;
+    --model)   MODEL="${2:?--model 값이 필요합니다}"; shift 2 ;;
     --verbose) VERBOSE=1; shift ;;
     -h|--help) usage; exit 0 ;;
     -*)        echo "[sim] 알 수 없는 옵션: $1" >&2; usage; exit 1 ;;
@@ -97,6 +100,7 @@ GPU_RUN=()
 
 RUN_ARGS=(python run_sim.py "$RECORD" --mode "$MODE" --device "$DEVICE")
 [[ -n "$STEPS" ]] && RUN_ARGS+=(--steps "$STEPS")
+[[ -n "$MODEL" ]] && RUN_ARGS+=(--model "$MODEL")
 
 echo "[sim] 실행: image=$IMAGE gpu=$USE_GPU mode=$MODE device=$DEVICE record=$RECORD${STEPS:+ steps=$STEPS}"
 [[ "$VERBOSE" == 1 ]] && set -x
