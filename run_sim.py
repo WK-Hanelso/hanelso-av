@@ -57,6 +57,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--steps", type=int, default=None)
     parser.add_argument("--device", choices=["cpu", "cuda"], default=None)
     parser.add_argument("--force", action="store_true", help="force re-parse even if parsed contract passes")
+    parser.add_argument(
+        "--model",
+        default=None,
+        help="planning model name (planning/models/<name>). "
+        "default: the single available model; required when multiple exist",
+    )
     return parser.parse_args()
 
 
@@ -144,7 +150,13 @@ def detect_calibration(record_path: Path) -> str | None:
     return None
 
 
-def detect_planning_module() -> str:
+def detect_planning_module(requested: str | None = None) -> str:
+    """모델 선택 (issue #31): 선택 축 = 조립 계약의 modules.planning 이름.
+
+    1) --model 지정 시 그 이름 (없는 이름이면 Available 목록과 함께 에러)
+    2) 미지정 + 모델 1개면 그 모델 (현행 유지)
+    3) 미지정 + 여러 개면 선택 방법 안내와 함께 에러
+    """
     models_dir = REPO_ROOT / "planning" / "models"
     candidates = sorted(
         path.name
@@ -156,11 +168,16 @@ def detect_planning_module() -> str:
             f"No planning models found under {models_dir}.\n"
             "Action: add planning/models/<name>/ and planning/configs/<name>.py first."
         )
+    if requested is not None:
+        if requested not in candidates:
+            raise RuntimeError(
+                f"Unknown planning model '{requested}'. Available: {candidates}"
+            )
+        return requested
     if len(candidates) > 1:
         raise RuntimeError(
-            "Multiple planning models found; default cannot be inferred uniquely.\n"
-            f"Candidates: {candidates}\n"
-            "Action: keep exactly one model under planning/models/ or extend run_sim.py selection rules."
+            "Multiple planning models found; pass --model <name>.\n"
+            f"Available: {candidates}"
         )
     return candidates[0]
 
@@ -356,7 +373,7 @@ def main() -> int:
         )
 
     try:
-        planning_module = detect_planning_module()
+        planning_module = detect_planning_module(args.model)
     except RuntimeError as error:
         return fail(str(error))
     planning_config_path = REPO_ROOT / "planning" / "configs" / f"{planning_module}.py"
