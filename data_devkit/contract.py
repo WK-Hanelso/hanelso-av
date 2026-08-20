@@ -149,6 +149,17 @@ ARTIFACTS: Dict[str, ArtifactSpec] = {
             produce_hint=_MAP_HINT,
         ),
         ArtifactSpec(
+            # 반사실 감독 레이어 (FORMAT_SPEC v0.2 §11) — 생산자: data_devkit/counterfactual.
+            name="counterfactual",
+            scope="clip",
+            required_files=("labels/counterfactual.json",),
+            required_keys={"labels/counterfactual.json": ("meta", "entries")},
+            produce_hint=(
+                "run: docker run --rm -v \"$PWD\":/workspace -w /workspace av-base:latest "
+                "python -m data_devkit.counterfactual.generate_openscene --logs <logs> --out <out>"
+            ),
+        ),
+        ArtifactSpec(
             # 예약: prediction 산출물.  생산자 미구현 (data.prediction=None만 유효).
             name="prediction",
             scope="clip",
