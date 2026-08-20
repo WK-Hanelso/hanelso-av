@@ -12,6 +12,7 @@
 | 경로 | 역할 |
 |---|---|
 | `parsers/` | pluggable 파싱 프레임워크 (구 `common/io` 그대로). `base.py`(SourceParser/EgoPoseProvider/MapParser ABC), `registry.py`(문자열 키→클래스), `schema.py`(통합 포맷 dataclass+writer), `config.py`(ParseConfig), `apollo/`(record·map 파서, 키 `"apollo_record"`/`"apollo"`), `pose/`(`"apollo_record"`/`"identity"`). |
+| `counterfactual/` | **반사실 goal 생성기** (FORMAT_SPEC v0.2 §11 생산자) — 개입 2종 + 품질 게이트 + vocab 커버리지. 산출 `labels/counterfactual.json`. 규약은 해당 README. |
 | `contract.py` | **아티팩트 registry** — 이름 → `work/<clip>/`(clip-scope) 또는 `work/maps/<map>/`(map-scope) 경로규약 + 필수 파일/필수 키 + provenance 축. `check(clip_id, requires, data_cfg, map_name)` 실패 시 "무엇을 돌려야 하는지" 안내를 담은 `ContractError` (자동 생성 없음). |
 
 ## 아티팩트 (1차)
