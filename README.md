@@ -2,18 +2,18 @@
 
 *Model-independent data contract, provenance, validation, and model-specific consumers for reproducible ML systems.*
 
-hanelso-av는 이종 주행 로그와 HD map을 model-independent canonical representation으로 정리하고, data producer와 model consumer의 책임을 artifact contract로 분리하는 ML pipeline이다. Data side는 parser·schema·validation을 소유하고, model dataloader는 temporal sampling·좌표 변환·tensorization을 소유한다. 이 경계는 PLUTO dataloader의 명시적 `REQUIRES`와 contract preflight로 연결된다. ([parser contract](data_devkit/parsers/base.py#L7-L33), [canonical schema](data_devkit/parsers/schema.py#L7-L130), [PLUTO `REQUIRES`](planning/models/pluto/dataloader.py#L785-L825))
+hanelso-av는 `heterogeneous raw data → model-independent canonical representation → artifact contract → model-specific consumer` 흐름으로 구성한 ML pipeline이다. Data side는 parser·schema·validation을 소유하고, Model side는 temporal sampling·coordinate transformation·tensorization을 소유한다. 이 책임 경계는 canonical schema와 model dataloader의 명시적 `REQUIRES`로 연결된다. ([canonical schema](data_devkit/parsers/schema.py#L7-L130), [dataloader contract](planning/interface.py#L66-L109))
 
-계약은 문서상의 추상화에 머물지 않는다. Apollo parser가 만든 canonical artifacts를 PLUTO-specific adapter가 소비하고, model-driven closed loop가 MP4와 metrics JSON을 산출한다. 별도 counterfactual engine은 자연 궤적에 통제된 개입을 적용하고 물리 quality gate 결과를 보존한다. ([Apollo record parser](data_devkit/parsers/apollo/record_parser.py#L230-L289), [closed-loop driver](simulation/drivers/model_driven.py#L38-L200), [metrics writer](simulation/render_sim.py#L135-L145), [counterfactual generator](data_devkit/counterfactual/generator.py#L89-L175))
+## Why this architecture exists
 
-## ML Data Architecture in one view
+Data producer가 downstream model마다 다른 history/future window, sample frequency, coordinate convention, object selection, tensor layout과 native config까지 알아야 한다면 model 변경이 raw-data pipeline 변경으로 전파된다. 그래서 `Data Layer = reusable factual representation`, `Model Layer = consumer-specific interpretation`으로 분리했다. Source-specific 사실은 parser/schema/contract에 두고, PLUTO 고유 sampling과 feature assembly는 consumer에 둔다. ([parser contract](data_devkit/parsers/base.py#L7-L33), [PLUTO adapter](planning/models/pluto/dataloader.py#L418-L468))
 
-| Evidence | Repository-backed scope |
+서로 다른 역할의 전문성 차이는 architecture boundary로 흡수한다. Data Engineer는 모든 model architecture를 알 필요가 없고, Model Engineer는 raw log parser와 source-specific detail을 반복 분석할 필요가 없다. 두 역할이 맞추는 지점은 artifact name, schema, semantic meaning, producer selection, validation rule이다.
+
+| Data side owns | Model side owns |
 |---|---|
-| **9** registered artifact contracts | `ARTIFACTS`에는 8개 non-empty spec과 producer가 없는 예약 `prediction` contract가 등록되어 있다. ([registry](data_devkit/contract.py#L65-L172)) |
-| **7,608** generated counterfactual samples | OpenScene mini 64 logs·2,848 anchors 실행에 대해 저장소 README가 기록한 결과이며, 원시 `report.json`은 저장소에 포함되지 않는다. ([validation record](data_devkit/counterfactual/README.md#L26-L29), [report generation](data_devkit/counterfactual/generate_openscene.py#L101-L105)) |
-| **88.5%** valid | 위 실행에서 생성 sample 중 curvature·lateral-acceleration 두 physical gate를 통과한 비율이며 model accuracy나 전체 dataset quality score가 아니다. ([gate logic](data_devkit/counterfactual/generator.py#L89-L119), [validation record](data_devkit/counterfactual/README.md#L26-L29)) |
-| **1 command** to the PLUTO path | `scripts/sim.sh <record> --model pluto`가 선택된 model을 `run_sim.py`에 전달한다. ([launcher](scripts/sim.sh#L24-L50), [argument handoff](scripts/sim.sh#L101-L107)) |
+| Source parsing, canonical schema, artifact path·required key, existence/schema validation | Required artifact 선택, temporal sampling, coordinate transformation, model-native feature assembly |
+| Config-level producer-selection axis | Policy inference, postprocess, simulation assembly |
 
 ## Architecture
 
@@ -32,68 +32,51 @@ flowchart LR
     end
 ```
 
-Data ownership의 parser registry와 dataclass serialization은 source-specific parsing을 canonical tables에서 분리하고, model ownership의 `Dataloader.REQUIRES`와 PLUTO adapter는 변환 책임을 consumer에 둔다. Counterfactual generator는 현재 standalone output과 clip-scoped contract가 각각 존재하며 그 handoff는 아직 partial이다. ([parser registry](data_devkit/parsers/registry.py#L5-L40), [serialization](data_devkit/parsers/schema.py#L133-L159), [dataloader contract](planning/interface.py#L66-L109), [standalone output](data_devkit/counterfactual/generate_openscene.py#L101-L105), [registered path](data_devkit/contract.py#L151-L161))
+Data ownership의 parser registry와 dataclass serialization은 source-specific parsing을 canonical tables에서 분리하고, model ownership의 `Dataloader.REQUIRES`와 PLUTO adapter는 변환 책임을 consumer에 둔다. Counterfactual generator는 별도 Dataset Enrichment producer다. 현재 standalone output과 clip-scoped contract는 각각 존재하지만 그 handoff는 아직 partial이다. ([parser/serialization](data_devkit/parsers/schema.py#L133-L159), [counterfactual paths](data_devkit/contract.py#L151-L161))
 
-## Why separate data knowledge from model knowledge?
-
-Data producer가 각 model의 history window, 좌표계, object selection과 tensor layout까지 소유하면 model 변경이 raw-data pipeline 변경으로 전파된다. 이 구현은 reusable facts를 parser/schema/contract에 두고 PLUTO 고유 temporal sampling과 feature assembly를 dataloader에 둔다. ([canonical rows](data_devkit/parsers/schema.py#L7-L130), [history sampling](planning/models/pluto/dataloader.py#L418-L468), [feature assembly](planning/models/pluto/dataloader.py#L1003-L1103))
-
-| Data side owns | Model side owns |
-|---|---|
-| Source parsing과 canonical schema ([parser ABC](data_devkit/parsers/base.py#L7-L33), [schema](data_devkit/parsers/schema.py#L7-L130)) | Required artifact 선택과 preflight ([`REQUIRES`](planning/models/pluto/dataloader.py#L785-L825)) |
-| Artifact path·required key와 existence/schema validation ([`ArtifactSpec`](data_devkit/contract.py#L41-L53), [`check`](data_devkit/contract.py#L211-L303)) | Temporal sampling·model-native feature assembly ([sampling](planning/models/pluto/dataloader.py#L418-L468), [assembly](planning/models/pluto/dataloader.py#L1003-L1103)) |
-| Config-level producer-selection axis ([`DATA_AXES`](data_devkit/contract.py#L29-L34), [validation](data_devkit/contract.py#L175-L191)) | Policy inference와 postprocess가 연결되는 simulation assembly ([assembly](simulation/render_sim.py#L85-L137)) |
-
-## Evidence at a glance
+## Key Evidence
 
 | Capability | Implemented evidence |
 |---|---|
-| Heterogeneous ingestion | Apollo Record와 HD Map parser가 공통 parser contracts 뒤에 등록된다. ([record](data_devkit/parsers/apollo/record_parser.py#L230-L289), [map](data_devkit/parsers/apollo/map_parser.py#L84-L247), [registry](data_devkit/parsers/registry.py#L5-L40)) |
-| Canonical representation | Dataclass rows와 JSON writers가 source output을 통합 table 형식으로 직렬화한다. ([rows](data_devkit/parsers/schema.py#L7-L130), [writers](data_devkit/parsers/schema.py#L133-L159)) |
-| Artifact contract | `ArtifactSpec`, registry, required file/key 검사가 logical artifact를 consumption 전에 검사한다. ([spec/registry](data_devkit/contract.py#L41-L172), [key validation](data_devkit/contract.py#L194-L208), [check](data_devkit/contract.py#L211-L303)) |
-| Producer selection | `agents="apollo_gt"`와 `prediction=None`만 현재 유효하며 추가 producer 이름은 예약 상태다. ([axes](data_devkit/contract.py#L29-L34), [agent contract](data_devkit/contract.py#L100-L123), [prediction reservation](data_devkit/contract.py#L162-L170)) |
-| Fail-fast diagnostics | Missing/schema 오류에는 producer command hint, invalid provenance에는 supported values가 포함된다. ([provenance diagnostic](data_devkit/contract.py#L175-L191), [artifact diagnostic](data_devkit/contract.py#L270-L296), [unit tests](tests/test_contract.py#L12-L46)) |
-| Actual ML consumer | PLUTO adapter가 contract를 검사하고 model-driven driver가 policy output으로 ego state를 전개한다. ([preflight](planning/models/pluto/dataloader.py#L803-L825), [driver](simulation/drivers/model_driven.py#L95-L167)) |
-| Evaluation integrity | Closed-loop inference adapter는 injected simulated ego history를 사용하고 future ego tensor를 입력에 채우지 않는다. 이 범위는 vendored training builder 전체에 대한 주장이 아니다. ([closed-loop frame](planning/models/pluto/dataloader.py#L939-L975), [future handling](planning/models/pluto/dataloader.py#L1034-L1048), [reference-line packing](planning/models/pluto/dataloader.py#L1380-L1425)) |
-| Temporal consistency | Decision, collision, renderer가 `log_idx`를 공유하고 post-step divergence는 다음 `time_idx`에 맞춘다. ([indices](simulation/drivers/model_driven.py#L95-L127), [metrics/rendering](simulation/drivers/model_driven.py#L168-L235)) |
-| Dataset enrichment | `lane_transplant`와 `time_transplant`가 alternative goal과 target trajectory pair를 만든다. ([interventions](data_devkit/counterfactual/generator.py#L129-L163)) |
-| Quality evidence | Curvature·lateral acceleration이 `valid`를 결정하고 vocabulary nearest distance는 threshold 없는 별도 metric이다. ([physical gates](data_devkit/counterfactual/generator.py#L44-L58), [valid decision](data_devkit/counterfactual/generator.py#L89-L119), [distance metric](data_devkit/counterfactual/generator.py#L61-L86)) |
-| Reproducible assembly | Root config loader가 module configs를 병합하고 shell launcher가 선택 model과 환경을 전달한다. ([config assembly](common/config.py#L57-L127), [launcher handoff](scripts/sim.sh#L101-L107)) |
+| **Data Contract** | `ArtifactSpec` / `REQUIRES` / fail-fast validation으로 consumption 전에 파일·필수 키·runtime producer selection을 검사한다. **9 registered artifact contracts = 8 implemented non-empty contracts + 1 reserved `prediction` contract**다. ([contract registry](data_devkit/contract.py#L41-L172), [preflight](planning/interface.py#L66-L109)) |
+| **Actual Consumer** | Apollo log와 HD Map에서 canonical artifacts를 만들고 contract preflight를 거쳐 PLUTO policy와 non-reactive closed-loop simulation까지 연결한다. ([PLUTO preflight](planning/models/pluto/dataloader.py#L803-L825), [closed-loop driver](simulation/drivers/model_driven.py#L95-L200)) |
+| **Dataset Enrichment** | Documented OpenScene mini validation record: 64 logs·2,848 anchors에서 **7,608** samples, physical-gate pass **88.5%**, vocabulary nearest distance p50 **0.30 m** · p90 **0.47 m**. `88.5%`는 curvature·lateral-acceleration gate 통과율이며 model accuracy, dataset quality score, training success rate가 아니다. 원시 `report.json`은 저장소에 포함되지 않는다. ([validation record](data_devkit/counterfactual/README.md#L26-L29), [gate logic](data_devkit/counterfactual/generator.py#L89-L119)) |
+| **Reproducible Assembly** | Config-driven assembly, Docker environment, contract preflight와 **Single launcher entry to the PLUTO simulation path**를 제공한다. `scripts/sim.sh <record> --model pluto` 실행에는 Docker, source data, map, model assets가 필요하다. ([config assembly](common/config.py#L57-L127), [launcher](scripts/sim.sh#L24-L107)) |
 
-## Data Contract and producer selection
+Full code/test evidence → [Evidence Map](docs/evidence_map.md)
 
-`ArtifactSpec`은 logical artifact의 `name`, `scope`, `required_files`, `provenances`, `axis`, `required_keys`, `produce_hint`를 선언한다. Dataloader class가 `REQUIRES`를 선언하면 `check()`가 파일·필수 키와 runtime producer selection을 모아 검사하고 위반 시 `ContractError`로 실패한다. ([`ArtifactSpec`](data_devkit/contract.py#L37-L53), [`check`](data_devkit/contract.py#L211-L303), [`Dataloader.REQUIRES`](planning/interface.py#L66-L109))
+## Actual Consumer — PLUTO
 
-현재 provenance는 artifact 내부에 persisted lineage metadata를 기록하는 DAG가 아니라 root config에서 producer를 선택하고 검증하는 axis다. `bevfusion` producer와 non-null prediction producer는 등록되어 있지 않으며 `prediction` artifact는 contract-only reservation이다. ([valid axes](data_devkit/contract.py#L29-L34), [runtime report](data_devkit/contract.py#L233-L303), [reserved contract](data_devkit/contract.py#L162-L170))
+`Apollo Record + HD Map → parser → canonical artifacts → contract preflight → PLUTO dataloader → policy → model-driven closed loop → metrics/video` 경로가 코드로 연결되어 있다. ([record parser](data_devkit/parsers/apollo/record_parser.py#L230-L484), [PLUTO simulation assembly](simulation/render_sim.py#L85-L145))
 
-## From contract to an actual PLUTO consumer
-
-`Apollo Record + HD Map → parser → canonical artifacts → contract preflight → PLUTO dataloader → policy → model-driven closed loop → metrics/video` 경로가 코드로 연결되어 있다. ([record parser](data_devkit/parsers/apollo/record_parser.py#L230-L484), [map parser](data_devkit/parsers/apollo/map_parser.py#L84-L247), [preflight](planning/models/pluto/dataloader.py#L803-L825), [assembly](simulation/render_sim.py#L85-L145))
-
-명시적 model 선택을 포함한 실행 진입점은 다음과 같다. Launcher는 Docker image 확인·mount·`run_sim.py` 호출을 담당한다. ([launcher flow](scripts/sim.sh#L69-L107))
+명시적 model 선택을 포함한 single launcher entry는 다음과 같다. Launcher는 Docker image 확인·mount·`run_sim.py` 호출을 담당하며, 실행에는 Docker와 필요한 source data·map·model assets가 전제된다. ([launcher flow](scripts/sim.sh#L69-L107))
 
 ```bash
 scripts/sim.sh <record> --model pluto
 ```
 
-Closed-loop 결과에는 MP4와 time/progress divergence, drivable-area, collision, emergency-brake summary가 포함된다. ([step metrics](simulation/drivers/model_driven.py#L168-L200), [summary/MP4](simulation/drivers/model_driven.py#L245-L268), [JSON writer](simulation/render_sim.py#L135-L145))
+Closed-loop 결과에는 MP4와 time/progress divergence, drivable-area, collision, emergency-brake summary가 포함된다. Deployed closed-loop inference adapter input path에서는 injected simulated ego history를 사용하고 future ego ground truth를 입력에 채우지 않는다. 이는 해당 adapter input path의 leakage control이며 vendored PLUTO training pipeline 전체에 대한 주장이 아니다. ([closed-loop input](planning/models/pluto/dataloader.py#L939-L1048), [metrics/output](simulation/drivers/model_driven.py#L168-L268))
 
-## Dataset Enrichment: Counterfactual Supervision
+## Dataset Enrichment — Counterfactual
 
-자연 궤적에 `lane_transplant` 또는 seeded donor selection 기반 `time_transplant`를 적용해 alternative goal과 corresponding trajectory를 만들며, token identity는 입력 기반으로 결정된다. 전체 payload에는 생성 시각이 들어가므로 byte-deterministic하다고 주장하지 않는다. ([token/interventions](data_devkit/counterfactual/generator.py#L34-L36), [interventions](data_devkit/counterfactual/generator.py#L129-L163), [payload timestamp](data_devkit/counterfactual/generator.py#L166-L175), [seeded CLI](data_devkit/counterfactual/generate_openscene.py#L49-L61))
+`Natural trajectory → Controlled intervention → Alternative goal + target trajectory → Physical quality gate → Training supervision` 흐름이다. `lane_transplant` 또는 seeded donor selection 기반 `time_transplant`를 적용하며, token identity는 입력 기반으로 결정된다. 전체 payload에는 생성 시각이 들어가므로 byte-deterministic하다고 주장하지 않는다. ([interventions](data_devkit/counterfactual/generator.py#L129-L175), [seeded CLI](data_devkit/counterfactual/generate_openscene.py#L49-L61))
 
-Physical gate를 통과하지 못한 entry도 삭제하지 않고 `valid=false`와 원인 판별에 필요한 quality metrics를 보존한다. 자동 생성되는 rejection-reason 문자열은 없고 `flags`는 caller가 전달한다. Vocabulary nearest-distance는 분포를 측정하지만 pass/fail threshold는 없다. ([entry schema](data_devkit/counterfactual/generator.py#L89-L119), [preservation test](tests/test_counterfactual_schema.py#L59-L65), [coverage report](data_devkit/counterfactual/generator.py#L178-L193))
+Physical gate를 통과하지 못한 entry도 삭제하지 않고 `valid=false`와 원인 판별에 필요한 quality metrics를 보존한다. 자동 생성되는 rejection-reason 문자열은 없고 `flags`는 caller가 전달한다. Vocabulary nearest-distance는 분포를 측정하지만 pass/fail threshold는 없다. ([entry schema](data_devkit/counterfactual/generator.py#L89-L119), [preservation test](tests/test_counterfactual_schema.py#L59-L65))
 
 ## Claim boundaries
 
 | Status | Scope |
 |---|---|
-| ✅ **Implemented** | Parser contracts/registry, canonical dataclasses, 8 non-empty artifact specs, PLUTO contract preflight, model-driven closed loop, two counterfactual interventions와 physical gates. ([parsers](data_devkit/parsers/base.py#L7-L33), [artifacts](data_devkit/contract.py#L65-L161), [PLUTO](planning/models/pluto/dataloader.py#L785-L825), [counterfactual](data_devkit/counterfactual/generator.py#L89-L163)) |
-| 🟠 **Partial** | Producer selection은 runtime config axis이며 persisted lineage가 아니다. Counterfactual standalone CLI와 clip-scoped contract의 handoff는 직접 연결되지 않았다. ([provenance](data_devkit/contract.py#L175-L191), [contract path](data_devkit/contract.py#L151-L161), [CLI path](data_devkit/counterfactual/generate_openscene.py#L101-L105)) |
+| ✅ **Implemented** | Parser contracts/registry, canonical dataclasses, 8 non-empty artifact specs, PLUTO contract preflight, model-driven closed loop, two counterfactual interventions와 physical gates. ([contracts](data_devkit/contract.py#L65-L161), [counterfactual](data_devkit/counterfactual/generator.py#L89-L163)) |
+| 🟠 **Partial** | Producer selection은 runtime config axis이며 persisted lineage가 아니다. Counterfactual standalone CLI와 clip-scoped contract의 handoff는 직접 연결되지 않았다. ([provenance/contract path](data_devkit/contract.py#L151-L191), [CLI path](data_devkit/counterfactual/generate_openscene.py#L101-L105)) |
 | 🟡 **Contract / slot defined** | `prediction` artifact와 `bevfusion` 이름은 producer 구현 없이 예약되어 있다. ([prediction](data_devkit/contract.py#L162-L170), [agents axis](data_devkit/contract.py#L29-L34)) |
-| ⬜ **Planned** | Raw camera/lidar/calibration E2E contract, SparseDriveV2 consumer, perception/localization implementations는 현재 설명 또는 placeholder 수준이다. ([data tiers](data_devkit/README.md#L26-L34), [SparseDriveV2 slot](planning/models/sparsedrive_v2/__init__.py#L1-L10), [perception placeholder](perception/interface.py#L1-L7), [localization placeholder](localization/interface.py#L1-L7)) |
+| ⬜ **Planned** | Raw camera/lidar/calibration E2E contract, SparseDriveV2 consumer, perception/localization implementations는 현재 설명 또는 placeholder 수준이다. ([data tiers](data_devkit/README.md#L26-L34), [domain placeholders](perception/interface.py#L1-L7)) |
 
-상세한 engineering story는 [ML Data Architecture Case Study](docs/ml_data_architecture_case_study.md), claim별 구현 상태와 테스트는 [Evidence Map](docs/evidence_map.md), 짧은 소개는 [Portfolio Summary](docs/portfolio_summary.md)에 정리한다.
+## Deep Dive links
+
+- [ML Data Architecture Case Study](docs/ml_data_architecture_case_study.md) — 상세 engineering story
+- [Evidence Map](docs/evidence_map.md) — claim별 구현 상태와 test evidence
+- [Portfolio Summary](docs/portfolio_summary.md) — 짧은 소개
 
 ---
 
@@ -128,11 +111,11 @@ Physical gate를 통과하지 못한 entry도 삭제하지 않고 `valid=false`�
 **조립은 ROOT config가 한다.** `configs/*.py`는 "무엇을 쓸지" 이름만 적는 조립 명세서이고, `common/config.py::load_config`가 이름을 `<domain>/configs/<이름>.py`로 해석·병합한다:
 
 ```python
-# configs/e100bt25.py — 이름만 고르면 전 스택이 조립된다
+# configs/<scenario>.py — 이름만 고르면 전 스택이 조립된다
 config = dict(
-    record="data/bag/E100BT-25/20260716151711.record.00006",
+    record="data/bag/<collection>/<timestamp>.record.<segment>",
     source="apollo_record", pose="apollo_record",        # 파싱·측위 선택
-    map_name="AYG", map_path="work/maps/AYG/map_graph.json",
+    map_name="<map>", map_path="work/maps/<map>/map_graph.json",
     data=dict(agents="apollo_gt", prediction=None),      # 아티팩트 출처(provenance) 선택
     modules=dict(planning="pluto", perception=None, localization=None),  # 도메인 슬롯
     calibration="e100",                                  # 실차 제원 선택

@@ -23,5 +23,9 @@ __pycache__/
 /MAP_PROTO_CUSTOM_EXTENSIONS.md
 /APOLLO_PLANNING_CONTROL_NOTION.md
 /common/FORMAT_SPEC.md
-/docs/
+# Public documentation allowlist
+/docs/*
+!/docs/ml_data_architecture_case_study.md
+!/docs/evidence_map.md
+!/docs/portfolio_summary.md
 /agent/
