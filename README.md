@@ -14,7 +14,7 @@
 |---|---|---|---|
 | 원본 파싱 | `data_devkit/parsers` — `SourceParser` ABC + registry | `"apollo_record"` (record), `"apollo"` (HD맵) | 활성 |
 | 측위(ego pose) | `EgoPoseProvider` ABC + registry | `"apollo_record"`, `"identity"` | 활성 (SLAM/odometry 슬롯 예약) |
-| 데이터 아티팩트 | `data_devkit/contract.py` — 이름→경로·필수키 + provenance 축 | `sample`·`ego_pose`·`ego_dynamics`·`agent_tracks`·`scene_log`·`route`·`map_graph` | 활성 (`prediction` 예약) |
+| 데이터 아티팩트 | `data_devkit/contract.py` — 이름→경로·필수키 + provenance 축 | `sample`·`ego_pose`·`ego_dynamics`·`agent_tracks`·`scene_log`·`route`·`map_graph`·`counterfactual` | 8개 non-empty spec (`prediction` contract 예약) |
 | 인지 | `agent_tracks` provenance 축 (`agents=`) | `"apollo_gt"` (로그 GT) | 활성 (`"bevfusion"` 예약) |
 | 판단(planning) | `planning/interface.py` — policy/dataloader/postprocessor registry + `load_model(이름)` | `"pluto"` | 활성 (모델 추가 = 디렉토리 1개 + config 1개, 기존 파일 수정 0) |
 | 지도 | `planning/map_adapter` — nuPlan `AbstractMap` duck-type | `ApolloMap` (`map_graph.json`) | 활성 |
@@ -27,11 +27,11 @@
 **조립은 ROOT config가 한다.** `configs/*.py`는 "무엇을 쓸지" 이름만 적는 조립 명세서이고, `common/config.py::load_config`가 이름을 `<domain>/configs/<이름>.py`로 해석·병합한다:
 
 ```python
-# configs/e100bt25.py — 이름만 고르면 전 스택이 조립된다
+# configs/<scenario>.py — 이름만 고르면 전 스택이 조립된다
 config = dict(
-    record="data/bag/E100BT-25/20260716151711.record.00006",
+    record="<record>",
     source="apollo_record", pose="apollo_record",        # 파싱·측위 선택
-    map_name="AYG", map_path="work/maps/AYG/map_graph.json",
+    map_name="<map>", map_path="work/maps/<map>/map_graph.json",
     data=dict(agents="apollo_gt", prediction=None),      # 아티팩트 출처(provenance) 선택
     modules=dict(planning="pluto", perception=None, localization=None),  # 도메인 슬롯
     calibration="e100",                                  # 실차 제원 선택
@@ -112,10 +112,10 @@ record(.record) ─┬─▶ ① inspect_record   토픽/맵/차량 판정 (tool
 
 ```bash
 # CPU (기본)
-scripts/sim.sh data/bag/E100BT-25/20260716151711.record.00006
+scripts/sim.sh <record> --model pluto
 
 # GPU
-scripts/sim.sh data/bag/E100BT-25/20260716151711.record.00006 --gpu --steps 100
+scripts/sim.sh <record> --model pluto --gpu --steps 100
 
 # 옵션: --gpu  --steps N  --mode closed_loop|open_loop  --verbose  -h
 ```
@@ -151,6 +151,8 @@ docker run --rm -v "$PWD":/workspace -w /workspace av-base:latest \
 - **`data/` = 입력 한곳(읽기전용)**: 코드는 `data/raw/…`, `data/nuplan/…` 짧은 경로로 접근. 물리 디스크는 심볼릭으로 흡수 — 디스크가 옮겨져도 심볼릭만 교체하면 코드 무변경. ( data는 별도 필요 )
 - **`work/` = 파생물 한곳, clip 단위**: `work/<clip>/`(parsed / sim / …). 스테이지별 캐싱으로 뒷단 수정 시 앞단 재실행을 막는다. `work/maps/`에 맵 그래프 캐시.
 - **원본 직접수정 금지**, 실험은 복사본에서.
+
+데이터 생산자/모델 소비자 경계와 artifact contract의 설계·근거는 [data_devkit/README.md](data_devkit/README.md) 참고.
 
 ---
 
