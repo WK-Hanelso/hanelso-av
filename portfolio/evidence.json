@@ -1,0 +1,153 @@
+{
+  "claims": [
+    {
+      "id": "C01",
+      "claim": "data_model_ownership_boundary",
+      "value": "Data owns factual representation and validation; the model consumer owns sampling, coordinate transforms, windows, and tensorization.",
+      "source": "data_devkit/README.md:5-15; data_devkit/docs/ml_data_architecture_case_study.md:5-25; planning/models/pluto/dataloader.py:418-468,1003-1103",
+      "reproducible": "yes (code inspection)",
+      "public_safe": true,
+      "note": "The data side does not own model-specific tensorization."
+    },
+    {
+      "id": "C02",
+      "claim": "registered_artifact_contracts",
+      "value": 9,
+      "source": "data_devkit/contract.py:65-172",
+      "reproducible": "yes (registry inspection)",
+      "public_safe": true,
+      "note": "Counted ArtifactSpec entries in the registry."
+    },
+    {
+      "id": "C03",
+      "claim": "implemented_non_empty_contracts",
+      "value": 8,
+      "source": "data_devkit/contract.py:68-161",
+      "reproducible": "yes (registry inspection)",
+      "public_safe": true,
+      "note": "Contracts with non-empty required_files."
+    },
+    {
+      "id": "C04",
+      "claim": "reserved_contracts",
+      "value": "1 (prediction)",
+      "source": "data_devkit/contract.py:162-170",
+      "reproducible": "yes (registry inspection)",
+      "public_safe": true,
+      "note": "No required file or producer; not counted as implemented."
+    },
+    {
+      "id": "C05",
+      "claim": "artifact_contract_fail_fast_tests",
+      "value": 3,
+      "source": "tests/test_contract.py:12-46",
+      "reproducible": "yes (test source inspection)",
+      "public_safe": true,
+      "note": "Three test functions; this is not a test-run pass count."
+    },
+    {
+      "id": "C06",
+      "claim": "pluto_consumer_contract_preflight",
+      "value": "REQUIRES declaration followed by contract.check() before clip preparation",
+      "source": "planning/interface.py:66-109; planning/models/pluto/dataloader.py:785-825,899-911",
+      "reproducible": "yes (code inspection)",
+      "public_safe": true,
+      "note": "Runtime code-path evidence; no external-asset E2E execution claimed."
+    },
+    {
+      "id": "C07",
+      "claim": "counterfactual_validation_logs",
+      "value": 64,
+      "source": "data_devkit/counterfactual/README.md:26-29",
+      "reproducible": "no (raw report not tracked)",
+      "public_safe": true,
+      "note": "Documented OpenScene mini validation run."
+    },
+    {
+      "id": "C08",
+      "claim": "counterfactual_validation_anchors",
+      "value": 2848,
+      "source": "data_devkit/counterfactual/README.md:26-29",
+      "reproducible": "no (raw report not tracked)",
+      "public_safe": true,
+      "note": "Documented run record."
+    },
+    {
+      "id": "C09",
+      "claim": "counterfactual_samples",
+      "value": 7608,
+      "source": "data_devkit/counterfactual/README.md:26-29",
+      "reproducible": "no (raw report not tracked)",
+      "public_safe": true,
+      "note": "Documented run record."
+    },
+    {
+      "id": "C10",
+      "claim": "physical_quality_gate_pass_rate",
+      "value": "88.5%",
+      "source": "data_devkit/counterfactual/README.md:26-29; data_devkit/counterfactual/generator.py:44-58,89-119",
+      "reproducible": "no (raw report not tracked)",
+      "public_safe": true,
+      "note": "Curvature and lateral-acceleration gate pass only; not accuracy or a dataset quality score."
+    },
+    {
+      "id": "C11",
+      "claim": "vocabulary_nearest_distance_p50_m",
+      "value": 0.30,
+      "source": "data_devkit/counterfactual/README.md:26-29; data_devkit/counterfactual/generator.py:61-86,178-193",
+      "reproducible": "no (raw report not tracked)",
+      "public_safe": true,
+      "note": "Distribution measurement; no pass/fail threshold."
+    },
+    {
+      "id": "C12",
+      "claim": "vocabulary_nearest_distance_p90_m",
+      "value": 0.47,
+      "source": "data_devkit/counterfactual/README.md:26-29; data_devkit/counterfactual/generator.py:61-86,178-193",
+      "reproducible": "no (raw report not tracked)",
+      "public_safe": true,
+      "note": "Distribution measurement; no pass/fail threshold."
+    },
+    {
+      "id": "C13",
+      "claim": "counterfactual_contract_handoff",
+      "value": "partial",
+      "source": "data_devkit/contract.py:151-161; data_devkit/counterfactual/generate_openscene.py:101-105",
+      "reproducible": "yes (code inspection)",
+      "public_safe": true,
+      "note": "The standalone CLI output is not directly handed off to the clip-scoped contract path."
+    }
+  ],
+  "assets": [
+    {
+      "filename": "assets/01_data_model_boundary.svg",
+      "shows": "Ownership boundary from immutable raw source to model consumer and closed-loop evaluation.",
+      "claim_ids": ["C01", "C06"]
+    },
+    {
+      "filename": "assets/01_data_model_boundary.png",
+      "shows": "PNG rendering of the ownership boundary.",
+      "claim_ids": ["C01", "C06"]
+    },
+    {
+      "filename": "assets/02_contract_evidence.svg",
+      "shows": "Nine registered contracts split into eight implemented non-empty contracts and one reserved prediction contract, plus three fail-fast tests.",
+      "claim_ids": ["C02", "C03", "C04", "C05"]
+    },
+    {
+      "filename": "assets/02_contract_evidence.png",
+      "shows": "PNG rendering of contract and fail-fast test evidence.",
+      "claim_ids": ["C02", "C03", "C04", "C05"]
+    },
+    {
+      "filename": "assets/03_counterfactual_quality.svg",
+      "shows": "Documented counterfactual run counts, physical-gate pass rate, and vocabulary nearest-distance percentiles.",
+      "claim_ids": ["C07", "C08", "C09", "C10", "C11", "C12"]
+    },
+    {
+      "filename": "assets/03_counterfactual_quality.png",
+      "shows": "PNG rendering of the documented counterfactual validation record.",
+      "claim_ids": ["C07", "C08", "C09", "C10", "C11", "C12"]
+    }
+  ]
+}
