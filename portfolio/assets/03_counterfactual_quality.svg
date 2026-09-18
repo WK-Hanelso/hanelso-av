@@ -6,7 +6,7 @@
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-09-19T04:52:42.002573</dc:date>
+    <dc:date>2026-09-19T05:08:40.052786</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -40,7 +40,7 @@ Q 12.5568 100.112246 12.5568 107.097686
 L 12.5568 160.652726
 Q 12.5568 167.638166 24.6096 167.638166
 z
-" clip-path="url(#p2ddffa3b5a)" style="fill: #eaf3fc; stroke: #1976d2; stroke-width: 1.8; stroke-linejoin: miter"/>
+" clip-path="url(#p050dc705f7)" style="fill: #eaf3fc; stroke: #1976d2; stroke-width: 1.8; stroke-linejoin: miter"/>
    </g>
    <g id="patch_3">
     <path d="M 242.2296 167.638166
@@ -53,7 +53,7 @@ Q 230.1768 100.112246 230.1768 107.097686
 L 230.1768 160.652726
 Q 230.1768 167.638166 242.2296 167.638166
 z
-" clip-path="url(#p2ddffa3b5a)" style="fill: #eaf3fc; stroke: #1976d2; stroke-width: 1.8; stroke-linejoin: miter"/>
+" clip-path="url(#p050dc705f7)" style="fill: #eaf3fc; stroke: #1976d2; stroke-width: 1.8; stroke-linejoin: miter"/>
    </g>
    <g id="patch_4">
     <path d="M 459.8496 167.638166
@@ -66,7 +66,7 @@ Q 447.7968 100.112246 447.7968 107.097686
 L 447.7968 160.652726
 Q 447.7968 167.638166 459.8496 167.638166
 z
-" clip-path="url(#p2ddffa3b5a)" style="fill: #eaf3fc; stroke: #1976d2; stroke-width: 1.8; stroke-linejoin: miter"/>
+" clip-path="url(#p050dc705f7)" style="fill: #eaf3fc; stroke: #1976d2; stroke-width: 1.8; stroke-linejoin: miter"/>
    </g>
    <g id="patch_5">
     <path d="M 20.592 228.954806
@@ -74,7 +74,7 @@ L 636.624 228.954806
 L 636.624 203.729606
 L 20.592 203.729606
 z
-" clip-path="url(#p2ddffa3b5a)" style="fill: #e7eaf0"/>
+" clip-path="url(#p050dc705f7)" style="fill: #e7eaf0"/>
    </g>
    <g id="patch_6">
     <path d="M 20.592 228.954806
@@ -82,32 +82,32 @@ L 565.78032 228.954806
 L 565.78032 203.729606
 L 20.592 203.729606
 z
-" clip-path="url(#p2ddffa3b5a)" style="fill: #15805d"/>
+" clip-path="url(#p050dc705f7)" style="fill: #15805d"/>
    </g>
    <g id="line2d_1">
     <path d="M 87.552 325.974806
 L 623.232 325.974806
-" clip-path="url(#p2ddffa3b5a)" style="fill: none; stroke: #172033; stroke-width: 1.7; stroke-linecap: square"/>
+" clip-path="url(#p050dc705f7)" style="fill: none; stroke: #172033; stroke-width: 1.7; stroke-linecap: square"/>
    </g>
    <g id="line2d_2">
     <path d="M 87.552 330.631766
 L 87.552 321.317846
-" clip-path="url(#p2ddffa3b5a)" style="fill: none; stroke: #172033; stroke-width: 1.2; stroke-linecap: square"/>
+" clip-path="url(#p050dc705f7)" style="fill: none; stroke: #172033; stroke-width: 1.2; stroke-linecap: square"/>
    </g>
    <g id="line2d_3">
     <path d="M 266.112 330.631766
 L 266.112 321.317846
-" clip-path="url(#p2ddffa3b5a)" style="fill: none; stroke: #172033; stroke-width: 1.2; stroke-linecap: square"/>
+" clip-path="url(#p050dc705f7)" style="fill: none; stroke: #172033; stroke-width: 1.2; stroke-linecap: square"/>
    </g>
    <g id="line2d_4">
     <path d="M 444.672 330.631766
 L 444.672 321.317846
-" clip-path="url(#p2ddffa3b5a)" style="fill: none; stroke: #172033; stroke-width: 1.2; stroke-linecap: square"/>
+" clip-path="url(#p050dc705f7)" style="fill: none; stroke: #172033; stroke-width: 1.2; stroke-linecap: square"/>
    </g>
    <g id="line2d_5">
     <path d="M 623.232 330.631766
 L 623.232 321.317846
-" clip-path="url(#p2ddffa3b5a)" style="fill: none; stroke: #172033; stroke-width: 1.2; stroke-linecap: square"/>
+" clip-path="url(#p050dc705f7)" style="fill: none; stroke: #172033; stroke-width: 1.2; stroke-linecap: square"/>
    </g>
    <g id="text_1">
     <text style="fill: #5b6475; font: 15px 'DejaVu Sans'; text-anchor: start" x="20.592" y="77.603606" transform="rotate(-0 20.592 77.603606)">Raw report.json is not tracked; values below are the repository record.</text>
@@ -156,7 +156,7 @@ L 623.232 321.317846
    </g>
    <g id="PathCollection_1">
     <defs>
-     <path id="m6ac03d1628" d="M 0 6.708204
+     <path id="m385903683d" d="M 0 6.708204
 C 1.779036 6.708204 3.485448 6.001385 4.743416 4.743416
 C 6.001385 3.485448 6.708204 1.779036 6.708204 0
 C 6.708204 -1.779036 6.001385 -3.485448 4.743416 -4.743416
@@ -168,8 +168,8 @@ C -3.485448 6.001385 -1.779036 6.708204 0 6.708204
 z
 " style="stroke: #ffffff; stroke-width: 1.5"/>
     </defs>
-    <g clip-path="url(#p2ddffa3b5a)">
-     <use xlink:href="#m6ac03d1628" x="355.392" y="325.974806" style="fill: #1976d2; stroke: #ffffff; stroke-width: 1.5"/>
+    <g clip-path="url(#p050dc705f7)">
+     <use xlink:href="#m385903683d" x="355.392" y="325.974806" style="fill: #1976d2; stroke: #ffffff; stroke-width: 1.5"/>
     </g>
    </g>
    <g id="text_16">
@@ -177,7 +177,7 @@ z
    </g>
    <g id="PathCollection_2">
     <defs>
-     <path id="m17c909e12b" d="M 0 6.708204
+     <path id="m78deb9a9f5" d="M 0 6.708204
 C 1.779036 6.708204 3.485448 6.001385 4.743416 4.743416
 C 6.001385 3.485448 6.708204 1.779036 6.708204 0
 C 6.708204 -1.779036 6.001385 -3.485448 4.743416 -4.743416
@@ -189,12 +189,12 @@ C -3.485448 6.001385 -1.779036 6.708204 0 6.708204
 z
 " style="stroke: #ffffff; stroke-width: 1.5"/>
     </defs>
-    <g clip-path="url(#p2ddffa3b5a)">
-     <use xlink:href="#m17c909e12b" x="507.168" y="325.974806" style="fill: #c77800; stroke: #ffffff; stroke-width: 1.5"/>
+    <g clip-path="url(#p050dc705f7)">
+     <use xlink:href="#m78deb9a9f5" x="507.168" y="325.974806" style="fill: #c77800; stroke: #ffffff; stroke-width: 1.5"/>
     </g>
    </g>
    <g id="text_17">
-    <text style="fill: #c77800; font: 700 14px 'DejaVu Sans'; text-anchor: middle" x="507.168" y="357.003531" transform="rotate(-0 507.168 357.003531)">p90  0.47 m</text>
+    <text style="fill: #c77800; font: 700 14px 'DejaVu Sans'; text-anchor: middle" x="507.168" y="308.493531" transform="rotate(-0 507.168 308.493531)">p90  0.47 m</text>
    </g>
    <g id="text_18">
     <text style="fill: #5b6475; font: 14px 'DejaVu Sans'; text-anchor: start" x="20.592" y="393.888806" transform="rotate(-0 20.592 393.888806)">Distance is a distribution measurement; the implementation defines no pass/fail threshold.</text>
@@ -205,7 +205,7 @@ z
   </g>
  </g>
  <defs>
-  <clipPath id="p2ddffa3b5a">
+  <clipPath id="p050dc705f7">
    <rect x="7.2" y="42.676406" width="669.6" height="388.08"/>
   </clipPath>
  </defs>

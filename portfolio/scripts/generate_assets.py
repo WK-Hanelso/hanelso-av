@@ -88,10 +88,10 @@ def ownership_architecture() -> None:
     ax.text(0.055, 0.415, "MODEL OWNERSHIP", fontsize=18, fontweight="bold", color=GREEN)
 
     nodes = [
-        (0.82, "Immutable Raw Source", BLUE_PALE, BLUE_DARK),
-        (0.71, "Parser", "white", BLUE),
-        (0.60, "Canonical Schema", "white", BLUE),
-        (0.50, "Artifact Contract  /  Validation", "white", BLUE_DARK),
+        (0.84, "Immutable Raw Source", BLUE_PALE, BLUE_DARK),
+        (0.735, "Parser", "white", BLUE),
+        (0.63, "Canonical Schema", "white", BLUE),
+        (0.535, "Artifact Contract  /  Validation", "white", BLUE_DARK),
         (0.35, "Model Consumer\nsampling  /  transform  /  window  /  tensorization", "white", GREEN),
         (0.225, "PLUTO Policy", "white", GREEN),
         (0.105, "Closed-loop Evaluation", GREEN_PALE, GREEN),
@@ -112,11 +112,11 @@ def ownership_architecture() -> None:
     ax.plot([0.05, 0.95], [0.45, 0.45], color=RED, lw=2.5, dashes=(6, 4))
     ax.text(
         0.945,
-        0.438,
+        0.455,
         "RESPONSIBILITY BOUNDARY",
         ha="right",
-        va="top",
-        fontsize=14,
+        va="bottom",
+        fontsize=12,
         fontweight="bold",
         color=RED,
     )
@@ -262,7 +262,7 @@ def counterfactual_quality() -> None:
         x = x0 + (tick / 0.6) * (x1 - x0)
         ax.plot([x, x], [y - 0.012, y + 0.012], color=INK, lw=1.2)
         ax.text(x, y - 0.045, f"{tick:.1f} m", ha="center", va="top", fontsize=14, color=MUTED)
-    for value, label, color, dy in [(0.30, "p50  0.30 m", BLUE, 0.055), (0.47, "p90  0.47 m", AMBER, -0.07)]:
+    for value, label, color, dy in [(0.30, "p50  0.30 m", BLUE, 0.055), (0.47, "p90  0.47 m", AMBER, 0.055)]:
         x = x0 + (value / 0.6) * (x1 - x0)
         ax.scatter([x], [y], s=180, color=color, zorder=3, edgecolors="white", linewidths=1.5)
         ax.text(x, y + dy, label, ha="center", va="center", fontsize=14, fontweight="bold", color=color)
