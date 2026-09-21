@@ -1,8 +1,19 @@
-# hanelso-av — 계약으로 조립하는 자율주행 SW 스택
+# hanelso-av — Contract-based Autonomous Driving AI Systems
 
-자율주행 SW 스택 — 센서 원본 → 데이터 → 인지 → 예측 → 판단(planning) → 시뮬레이션/평가 — 을 하나의 모노레포에서 개발한다. **이 프로젝트의 본체는 특정 모델이나 시뮬레이터가 아니라, 전 스택을 모듈로 나누고 경계마다 계약(ABC + registry + 데이터 계약)을 두어 갈아끼울 수 있게 조립하는 구조 그 자체다.** 모델·파서·렌더러는 그 구조에 꽂히는 교체 가능한 구성요소다.
+Apollo 주행 로그와 HD Map부터 Planning, Closed-loop Simulation까지를 **계약과 소유권 경계로 조립하는 자율주행 AI Systems 프로젝트**입니다. 특정 모델 하나보다, 모델·데이터·실행 환경을 교체 가능하게 만드는 구조를 중심으로 설계합니다.
 
-**핵심 원칙 — 원본 기준(source-of-truth).** 모든 것은 불변의 원본 파일(주행 raw, HD맵, nuPlan/nuScenes, 이미지, 차량 제원)에서 출발한다. 원본은 절대 수정하지 않고, 파생물은 전부 원본에서 계산으로 뽑는다. *파싱 = 사실 기록, 정규화·가공 = 소비 시점 결정.*
+## At a glance
+
+| 항목 | 현재 상태 |
+|---|---|
+| End-to-end path | Apollo Record + HD Map → Unified Artifacts → PLUTO → Non-reactive Closed-loop Simulation |
+| Data architecture | Source-of-truth raw data, artifact contracts, provenance, fail-fast validation |
+| Model architecture boundary | ABC + registry + model-owned dataloader / postprocessor |
+| Runtime | Root config + model-specific Docker environments |
+| Active domain | Planning / Simulation |
+| Expansion | Perception, Prediction, Counterfactual Data, VLM/VLA tenants |
+
+**What this repository demonstrates:** 데이터 계약, 모델 온보딩, 환경 격리, 시뮬레이션 검증을 하나의 구조로 연결하는 **AI Systems Engineering**.
 
 ---
 
