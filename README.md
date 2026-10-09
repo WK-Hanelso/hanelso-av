@@ -1,5 +1,9 @@
 # hanelso-av — Contract-based Autonomous Driving AI Systems
 
+![hanelso-av concept banner](assets/project-banner-20261009.jpg)
+
+<sub>Conceptual project illustration; not a measured output or an implementation diagram.</sub>
+
 Apollo 주행 로그와 HD Map부터 Planning, Closed-loop Simulation까지를 **계약과 소유권 경계로 조립하는 자율주행 AI Systems 프로젝트**입니다. 특정 모델 하나보다, 모델·데이터·실행 환경을 교체 가능하게 만드는 구조를 중심으로 설계합니다.
 
 ## At a glance
